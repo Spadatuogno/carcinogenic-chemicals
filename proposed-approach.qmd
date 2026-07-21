@@ -1,0 +1,163 @@
+---
+title: "Proposed approach for the Characterization"
+author: "Franco Catuogno"
+format: html
+editor: visual
+---
+
+
+
+```{r setup}
+#| include: false
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+# Required packages
+```{r}
+library(readxl)
+library(dplyr)
+library(readr)
+library(stringr)
+library(pdftools)
+library(tabulapdf)
+library(httr2)
+library(tidyverse)
+```
+
+# 1. Consulting reference agencies/data bases to identify carcinogens among the targeted chemicals.
+
+## 1.1. Loading lists of carcinogenic chemicals from each agency/data base
+
+### IARC. Downloaded from: https://monographs.iarc.who.int/list-of-classifications/.
+```{r}
+IARC_chemicals <- read_xlsx("data/Agents Classified by the IARC Monographs, Volumes 1–142.xlsx",
+          skip = 1) |> 
+  rename(CAS_RN = `CAS No.`) |> 
+  filter(!is.na(CAS_RN))
+
+print(paste("There are", nrow(IARC_chemicals), "chemical agents listed by IARC. These number might include repetitions of the same chemical listed with different Agent name"))
+
+```
+
+### ECHA. Downloaded from: https://chem.echa.europa.eu/obligation-lists/clhList.
+```{r}
+ECHA_H350andH351 <- read_excel("data/Harmonised_List_2026-07-21 12_20_52.xlsx") |> 
+  rename(CAS_RN = "CAS number") |> 
+  filter(`Hazard class, category and statement code(s)` |> 
+           str_detect("H350|351"))
+
+print(paste("There are", nrow(ECHA_H350andH351), "chemicals with Carcinogenicity properties listed by ECHA"))
+
+```
+### USA.
+
+```{r}
+download.file(
+  "https://npic.orst.edu/chemicals_evaluated.pdf",
+  destfile = "data/chemicals_evaluated.pdf",
+  mode = "wb"
+)
+
+library(pdftools)
+
+pdf <- pdf_text("data/chemicals_evaluated.pdf")
+
+
+length(pdf)
+
+pdf[[13]]
+cat(pdf[[13]])
+
+```
+
+
+```{r}
+parse_epa_page <- function(page_number){
+  page <- pdf_data("data/chemicals_evaluated.pdf")[[page_number]] |>
+    filter(y > 100, !str_detect(text, "Page"))
+  
+  # --- Step 0: drop lone header-artifact tokens (case-sensitive, exact match) ---
+  # These are the wrapped remainders of "PC CODE" / "REPORT DATE" that can land
+  # on the same y-coordinate as the first real data row.
+  page <- page |>
+    filter(!text %in% c("CODE", "DATE"))
+  
+  # --- Step 1: remove remaining whole-line header/banner rows ---
+  header_pattern <- paste(
+    "U\\.S\\. Environmental",
+    "Protection Agency",
+    "CANCER CLASSIFICATION",
+    "^CHEMICAL$",
+    sep = "|"
+  )
+  
+  line_text <- page |>
+    arrange(y, x) |>
+    group_by(y) |>
+    summarise(line = paste(text, collapse = " "), .groups = "drop")
+  
+  header_ys <- line_text |>
+    filter(str_detect(line, header_pattern)) |>
+    pull(y)
+  
+  page <- page |> filter(!y %in% header_ys)
+  
+  # --- Step 2: column split + pivot ---
+  df <- page |>
+    mutate(
+      column = case_when(
+        x < 160 ~ "Chemical",
+        x >= 160 & x < 230 ~ "CAS_RN",
+        x >= 230 & x < 270 ~ "PC_Code",
+        x >= 270 & x < 530 ~ "Classification",
+        x >= 530 ~ "Report_Date"
+      )
+    ) |>
+    arrange(y, x) |>
+    group_by(y, column) |>
+    summarise(text = paste(text, collapse = " "), .groups = "drop") |>
+    pivot_wider(names_from = column, values_from = text) |>
+    arrange(y) |>
+    mutate(row_id = row_number())
+  
+  # --- Step 3: collapse remaining wrapped-line fragments into their record ---
+  smart_paste <- function(x) {
+    x <- x[!is.na(x)]
+    if (length(x) == 0) return(NA_character_)
+    out <- x[1]
+    for (i in seq_along(x)[-1]) {
+      out <- if (str_detect(out, "-$")) paste0(out, x[i]) else paste(out, x[i])
+    }
+    out
+  }
+  
+  df <- df |>
+    mutate(
+      has_cas = !is.na(CAS_RN),
+      grp     = rev(cumsum(rev(has_cas)))
+    )
+  
+  df |>
+    group_by(grp) |>
+    summarise(
+      Chemical       = smart_paste(Chemical),
+      CAS_RN         = first(na.omit(CAS_RN)),
+      PC_Code        = first(na.omit(PC_Code)),
+      Classification = smart_paste(Classification),
+      Report_Date    = first(na.omit(Report_Date)),
+      first_row      = min(row_id),
+      .groups = "drop"
+    ) |>
+    arrange(first_row) |>
+    select(-grp, -first_row)
+}
+
+epa13 <- parse_epa_page(13)
+```
+
+
+# Probablemente cuando haga los joints con mi lista the quimicos de HBRU me convenga ponerlos a la izquierda y hacer left join, y ver si se mantienen los replicados de la lista de la derecha
+```{r}
+
+```
+
