@@ -22,35 +22,288 @@ library(pdftools)
 library(tabulapdf)
 library(httr2)
 library(tidyverse)
+library(purrr)
 ```
+
+
+# 0. Importing list of chemicals targeted in HBRU method:
+```{r}
+HBRU <- read_excel("data/PubChem.xlsx") |> 
+  select(!6) |> 
+  rename(CAS_RN = "CAS N°") 
+```
+
 
 # 1. Consulting reference agencies/data bases to identify carcinogens among the targeted chemicals.
 
 ## 1.1. Loading lists of carcinogenic chemicals from each agency/data base
 
-### IARC. Downloaded from: https://monographs.iarc.who.int/list-of-classifications/.
+### 1.1.1. IARC. Downloaded from: https://monographs.iarc.who.int/list-of-classifications/.
 ```{r}
-IARC_chemicals <- read_xlsx("data/Agents Classified by the IARC Monographs, Volumes 1–142.xlsx",
-          skip = 1) |> 
-  rename(CAS_RN = `CAS No.`) |> 
-  filter(!is.na(CAS_RN))
+IARC_agents <- read_xlsx("data/Agents Classified by the IARC Monographs, Volumes 1–142.xlsx",
+          skip = 1)
 
-print(paste("There are", nrow(IARC_chemicals), "chemical agents listed by IARC. These number might include repetitions of the same chemical listed with different Agent name"))
+IARC_chemicals <- IARC_agents |>
+  rename(CAS_RN = `CAS No.`) |>
+  filter(
+    str_detect(Agent, "^Hexachlorocyclohexanes")|
+      !is.na(CAS_RN)
+  )
+
+IARC_carcichem <- IARC_chemicals |> 
+  filter(Group |> 
+           str_detect("1|2A|2B"))
+
+HBRU_IARC_carcichem <- left_join(HBRU, IARC_carcichem, by = "CAS_RN") |>
+  mutate(
+    Group = case_when(
+
+      is.na(Group) &
+        str_detect(Chemical, regex("HCH", ignore_case = TRUE)) ~
+          IARC_carcichem$Group[
+            str_detect(IARC_carcichem$Agent,
+                       "^Hexachlorocyclohexanes")
+          ],
+        
+      is.na(Group) &
+        str_detect(Chemical, regex("PCB", ignore_case = TRUE)) ~
+          IARC_carcichem$Group[
+            str_detect(IARC_carcichem$Agent,
+                       "Polychlorinated biphenyls")
+          ],
+
+      is.na(Group) &
+        str_detect(Chemical, regex("chlordane", ignore_case = TRUE)) ~
+          IARC_carcichem$Group[
+            str_detect(IARC_carcichem$Agent,
+                       "^Chlordane$")
+          ],
+
+      is.na(Group) &
+        str_detect(Chemical, regex("aldrin|dieldrin", ignore_case = TRUE)) ~
+          IARC_carcichem$Group[
+            str_detect(IARC_carcichem$Agent,
+                       "Dieldrin")
+          ],
+
+      is.na(Group) &
+        str_detect(Chemical, regex("DDT", ignore_case = TRUE)) ~
+          IARC_carcichem$Group[
+            str_detect(IARC_carcichem$Agent,
+                       "^DDT")
+          ],
+
+      TRUE ~ Group
+    )
+  )  |> 
+  filter(!is.na(Group)) |> 
+  select(1:2,7)|> 
+  filter(!Chemical |> 
+  str_detect("δ|ε"))  # removing δ-HCH & ε-HCH for which there's no evidence of carcinogenicity
+
+  
+
+print(paste("There are", nrow(IARC_agents), "agents listed by IARC including", nrow(IARC_chemicals), "chemicals among which", nrow(IARC_carcichem), "are carcinogenic (Group 1, 2A or 2B) and", nrow(HBRU_IARC_carcichem), "of them are targeted in HBRU method"))
+
+# Comment on Hexachlorocyclohexanes: δ-HCH and ε-HCH were specifically removed because IARC report on Hexachlorocyclohexanes only mentions α-HCH and β-HCH. γ-HCH has its own category 1 for its specific CAS number: 58-89-9. 
+
 
 ```
+[1] "There are 1129 agents listed by IARC including 913 chemicals among which 440 are carcinogenic (Group 1, 2A or 2B) and 21 of them are targeted in HBRU method"
 
-### ECHA. Downloaded from: https://chem.echa.europa.eu/obligation-lists/clhList.
+### 1.1.2. ECHA. Downloaded from: https://chem.echa.europa.eu/obligation-lists/clhList.
 ```{r}
-ECHA_H350andH351 <- read_excel("data/Harmonised_List_2026-07-21 12_20_52.xlsx") |> 
-  rename(CAS_RN = "CAS number") |> 
+
+ECHA_chemicals <- read_excel("data/Harmonised_List_2026-07-21 12_20_52.xlsx") |> 
+  rename(CAS_RN = "CAS number")
+
+ECHA_H350andH351 <- ECHA_chemicals |> 
   filter(`Hazard class, category and statement code(s)` |> 
-           str_detect("H350|351"))
+           str_detect("H350|351")) |> 
+   mutate(
+    ECHA_Carcinogenicity = str_extract(
+      `Hazard class, category and statement code(s)`,
+      "^Carc\\.\\s*(1A|1B|2),\\s*H35[01]")) 
 
-print(paste("There are", nrow(ECHA_H350andH351), "chemicals with Carcinogenicity properties listed by ECHA"))
+HBRU_ECHA_carcichem <- left_join(HBRU, ECHA_H350andH351, by = "CAS_RN") |>
+   mutate(
+    ECHA_Carcinogenicity = case_when(
+      is.na(ECHA_Carcinogenicity) &
+        str_detect(Chemical, regex("chlordane", ignore_case = TRUE)) ~
+          ECHA_H350andH351$ECHA_Carcinogenicity[
+            str_detect(ECHA_H350andH351$`Substance name`,
+                       regex("chlordane", ignore_case = TRUE)
+                       )
+          ],
+      is.na(ECHA_Carcinogenicity) &
+        str_detect(Chemical, regex("Metolachlor", ignore_case = TRUE)) ~
+          ECHA_H350andH351$ECHA_Carcinogenicity[
+            str_detect(ECHA_H350andH351$`Substance name`,
+                       regex("metolachlor", ignore_case = TRUE)
+                       )
+          ],
+      TRUE ~ ECHA_Carcinogenicity
+    )
+   ) |> 
+  select(1:2, 13) |> 
+  filter(!is.na(ECHA_Carcinogenicity)) |> 
+  arrange(Chemical)
+  
+
+print(paste("There are", nrow(ECHA_chemicals), "chemicals listed by ECHA including", nrow(ECHA_H350andH351), "carcinogenic chemicals (Hazard statements H350 or H351) and", nrow(HBRU_ECHA_carcichem), "of them are targeted in HBRU method"))
+
+# Comment on chlordanes and metolachlor: Only one of the isomers has been identified as carcinogenic, however the commercial product comes as a racemic mixture of the 2 (trans/cis-chlordane and R/S-metolachlor), hence, detection of one of the isomers is a biomarker of exposure to the mixture, including the carcinogenic compound.
+```
+[1] "There are 4822 chemicals listed by ECHA including 1290 carcinogenic chemicals (Hazard statements H350 or H351) and 36 of them are targeted in HBRU method"
+
+### 1.1.3. AICIS. Downloaded from https://www.industrialchemicals.gov.au/help-and-guides/list-chemicals-high-hazards-categorisation.
+```{r}
+HCIS_chemicals <- read_excel("data/List_of_chemicals_with_high_hazards_for_categorisation_2025.XLSX", 
+    sheet = "Consolodated List")
+
+
+HCIS_H350andh351 <- read_excel("data/List_of_chemicals_with_high_hazards_for_categorisation_2025.XLSX", 
+    sheet = "Consolodated List") |> 
+  rename(CAS_RN = "CAS RN") |> 
+  filter(`Safe Work Australia HCIS` |> 
+           str_detect("H350|351"))|> 
+   mutate(
+    HCIS_Carcinogenicity = str_extract(
+      `Safe Work Australia HCIS`,
+      "^Carcinogenicity \\s*(1A|1B|2) \\s*H35[01]"))
+
+HBRU_HCIS_carcichem <- left_join(HBRU, HCIS_H350andh351, by = "CAS_RN")|>
+   mutate(
+    HCIS_Carcinogenicity = case_when(
+      is.na(HCIS_Carcinogenicity) &
+        str_detect(Chemical, regex("chlordane", ignore_case = TRUE)) ~
+          HCIS_H350andh351$HCIS_Carcinogenicity[
+            str_detect(HCIS_H350andh351$`Chemical name`,
+                       regex("chlordane", ignore_case = TRUE)
+                       )
+          ],
+      TRUE ~ HCIS_Carcinogenicity
+    )
+   ) |> 
+  select(1:2,10,9,20) |> 
+  filter(!is.na(HCIS_Carcinogenicity)) |> 
+  arrange(Chemical)
+  
+
+print(paste("There are", nrow(HCIS_chemicals), "chemicals listed by HCIS including", nrow(HCIS_H350andh351), "carcinogenic chemicals (Hazard statements H350 or H351) and", nrow(HBRU_HCIS_carcichem), "of them are targeted in HBRU method"))
+
+print(paste("HCIS lists the same chemicals as ECHA except from:", anti_join(HBRU_ECHA_carcichem, HBRU_HCIS_carcichem, by = "Chemical") |> select(Chemical)))
+```
+[1] "There are 4901 chemicals listed by HCIS including 1820 carcinogenic chemicals (Hazard statements H350 or H351) and 34 of them are targeted in HBRU method"
+[1] "HCIS lists the same chemicals as ECHA except from: c(\"Difenoconazole\", \"Metolachlor\")"
+
+### 1.1.4. PubChem. https://pubchem.ncbi.nlm.nih.gov/.
+```{r}
+PubChem <- read_excel("data/PubChem.xlsx")
+
+PubChem_carcichems <- PubChem  |> 
+  rename(CAS_RN = "CAS N°") |> 
+  filter(`GHS08: Health hazard (Pubchem)` |> 
+           str_detect("H350|351"))
+  
+
+print(paste("Among the", nrow(PubChem), "chemicals targeted in HBRU method there are", nrow(PubChem_carcichems), "chemicals with evidence of carcinogenicity (Hazard statements H350 or H351) mentioned in PubChem"))
+```
+### 1.1.5. DFG. Taken from https://books.publisso.de/sites/default/files/documents/series/mak/lmbv/Vol2024/Iss2/Doc002/mbwl_2024_eng.pdf.
+```{r}
+DFG_agents <- read_excel("data/List of MAK and BAT Values 2024.xlsx") |> 
+  mutate(
+    CAS_RN = str_extract(Substance, "\\d{2,7}-\\d{2}-\\d"),
+    Substance_clean = Substance |>
+      str_remove("\\s*\\[[^\\]]*\\]") |>
+      str_squish()
+  )
+
+
+DFG_chemicals <- DFG_agents |>  
+  filter(!is.na(CAS_RN))|>
+  filter(!Substance == "1,2,3,4,5,6-Hexachlorocyclohexane techn. mixture of α-HCH [319-84-6] and β-HCH [319-85-7]")
+
+HBRU_DFG_carcichem <- left_join(HBRU, DFG_chemicals, by = "CAS_RN") |> 
+  rename(DFG_Carcinogenicity = "Category") |> 
+  filter(!is.na(DFG_Carcinogenicity))
+
+print(paste("There are", nrow(DFG_agents), "carcinogenic agents listed by DFG among which", nrow(DFG_chemicals), "are chemicals among which", nrow(HBRU_DFG_carcichem), "of them are targeted in HBRU method"))
 
 ```
-### USA.
+[1] "There are 385 carcinogenic agents listed by DFG among which 344 are chemicals among which 6 of them are targeted in HBRU method"
 
+
+### 1.1.6. USA.
+
+#### 1.1.6.1. IRIS. Downloaded from: https://iris.epa.gov/AtoZ/?list_type=alpha
+```{r}
+IRIS_chemicals <- read_excel("data/WOE_Details.xlsx") |> 
+  rename(CAS_RN = "CASRN")
+
+IRIS_carcichems <- IRIS_chemicals |>
+  mutate(`WOE DESCRIPTION` = str_replace(`WOE DESCRIPTION`,
+                                         "Not likely",
+                                         "Not-likely"),
+         `WOE DESCRIPTION` = str_replace(`WOE DESCRIPTION`,
+                                         "Not classifiable",
+                                         "Not-classifiable"),
+         `WOE DESCRIPTION` = str_replace(`WOE DESCRIPTION`,
+                                         "Not applicable",
+                                         "Not-applicable")) |> 
+  filter(!`WOE DESCRIPTION` |> 
+           str_detect("Not-|non-|Inadequate|inadequate")) |> 
+  filter(!duplicated(CAS_RN))
+
+#IRIS_carcichems |>   arrange(`WOE DESCRIPTION`) |>   distinct(`WOE DESCRIPTION`)
+
+
+HBRU_IRIS_carcichems <- left_join(HBRU, IRIS_carcichems, by = "CAS_RN") |>
+  mutate(
+    `WOE DESCRIPTION` = case_when(
+
+      
+      is.na(`WOE DESCRIPTION`) &
+        str_detect(Chemical, regex("chlordane", ignore_case = TRUE)) ~
+          IRIS_carcichems$`WOE DESCRIPTION`[
+            str_detect(IRIS_carcichems$`CHEMICAL NAME`,
+                       "^Chlordane")
+          ],
+      is.na(`WOE DESCRIPTION`) &
+        str_detect(Chemical, regex("PCB", ignore_case = TRUE)) ~
+          IRIS_carcichems$`WOE DESCRIPTION`[
+            str_detect(IRIS_carcichems$`CHEMICAL NAME`,
+                       "PCBs")
+          ],
+      is.na(`WOE DESCRIPTION`) &
+        str_detect(Chemical, regex("o,p'-DDD", ignore_case = TRUE)) ~
+          IRIS_carcichems$`WOE DESCRIPTION`[
+            str_detect(IRIS_carcichems$`CHEMICAL NAME`,
+                       "(DDD)")
+          ],
+      is.na(`WOE DESCRIPTION`) &
+        str_detect(Chemical, regex("o,p'-DDE", ignore_case = TRUE)) ~
+          IRIS_carcichems$`WOE DESCRIPTION`[
+            str_detect(IRIS_carcichems$`CHEMICAL NAME`,
+                       "(DDE)")
+          ],
+        is.na(`WOE DESCRIPTION`) &
+        str_detect(Chemical, regex("o,p'-DDT", ignore_case = TRUE)) ~
+          IRIS_carcichems$`WOE DESCRIPTION`[
+            str_detect(IRIS_carcichems$`CHEMICAL NAME`,
+                       "(DDT)")
+          ],
+      TRUE ~ `WOE DESCRIPTION`
+    )
+  ) |> 
+  select(1:2,8)|> 
+  filter(!is.na(`WOE DESCRIPTION`)) 
+
+print(paste("There are", nrow(IRIS_chemicals), "chemicals listed by IRIS including", nrow(IRIS_carcichems), "with evidence of carcinogenicity and", nrow(HBRU_IRIS_carcichems), "of them are targeted in HBRU method"))
+```
+[1] "There are 307 chemicals listed by IRIS including 143 with evidence of carcinogenicity and 26 of them are targeted in HBRU method"
+
+#### 1.1.6.2. NPIC
 ```{r}
 download.file(
   "https://npic.orst.edu/chemicals_evaluated.pdf",
@@ -58,51 +311,60 @@ download.file(
   mode = "wb"
 )
 
-library(pdftools)
-
-pdf <- pdf_text("data/chemicals_evaluated.pdf")
-
-
-length(pdf)
-
-pdf[[13]]
-cat(pdf[[13]])
-
 ```
 
-
 ```{r}
-parse_epa_page <- function(page_number){
+assign_lines <- function(y, tol = 3) {
+  o <- order(y)
+  y_sorted <- y[o]
+  grp <- cumsum(c(1, diff(y_sorted) > tol))
+  out <- integer(length(y))
+  out[o] <- grp
+  out
+}
+
+smart_paste <- function(x) {
+  x <- x[!is.na(x)]
+  if (length(x) == 0) return(NA_character_)
+  out <- x[1]
+  for (i in seq_along(x)[-1]) {
+    out <- if (str_detect(out, "-$")) paste0(out, x[i]) else paste(out, x[i])
+  }
+  out
+}
+
+parse_epa_page <- function(page_number, y_tol = 3){
   page <- pdf_data("data/chemicals_evaluated.pdf")[[page_number]] |>
-    filter(y > 100, !str_detect(text, "Page"))
+    filter(y > 60, !str_detect(text, "Page")) |>
+    # Drop standalone header-artifact tokens FIRST, before any line clustering.
+    # "CODE" and "DATE" only ever appear as the wrapped remainder of "PC CODE" /
+    # "REPORT DATE" - never as real data - so exact-match removal is safe.
+    filter(!text %in% c("CODE", "DATE")) |>
+    mutate(line_id = assign_lines(y, tol = y_tol))
   
-  # --- Step 0: drop lone header-artifact tokens (case-sensitive, exact match) ---
-  # These are the wrapped remainders of "PC CODE" / "REPORT DATE" that can land
-  # on the same y-coordinate as the first real data row.
-  page <- page |>
-    filter(!text %in% c("CODE", "DATE"))
-  
-  # --- Step 1: remove remaining whole-line header/banner rows ---
+  # --- Drop remaining whole header/banner lines ---
   header_pattern <- paste(
     "U\\.S\\. Environmental",
     "Protection Agency",
+    "CHEMICAL",
+    "CAS NO\\.",
     "CANCER CLASSIFICATION",
-    "^CHEMICAL$",
+    "REPORT",
     sep = "|"
   )
   
   line_text <- page |>
-    arrange(y, x) |>
-    group_by(y) |>
+    arrange(line_id, x) |>
+    group_by(line_id) |>
     summarise(line = paste(text, collapse = " "), .groups = "drop")
   
-  header_ys <- line_text |>
+  header_ids <- line_text |>
     filter(str_detect(line, header_pattern)) |>
-    pull(y)
+    pull(line_id)
   
-  page <- page |> filter(!y %in% header_ys)
+  page <- page |> filter(!line_id %in% header_ids)
   
-  # --- Step 2: column split + pivot ---
+  # --- Column split + pivot ---
   df <- page |>
     mutate(
       column = case_when(
@@ -113,51 +375,174 @@ parse_epa_page <- function(page_number){
         x >= 530 ~ "Report_Date"
       )
     ) |>
-    arrange(y, x) |>
-    group_by(y, column) |>
+    arrange(line_id, x) |>
+    group_by(line_id, column) |>
     summarise(text = paste(text, collapse = " "), .groups = "drop") |>
     pivot_wider(names_from = column, values_from = text) |>
-    arrange(y) |>
+    arrange(line_id) |>
     mutate(row_id = row_number())
   
-  # --- Step 3: collapse remaining wrapped-line fragments into their record ---
-  smart_paste <- function(x) {
-    x <- x[!is.na(x)]
-    if (length(x) == 0) return(NA_character_)
-    out <- x[1]
-    for (i in seq_along(x)[-1]) {
-      out <- if (str_detect(out, "-$")) paste0(out, x[i]) else paste(out, x[i])
-    }
-    out
-  }
-  
-  df <- df |>
-    mutate(
-      has_cas = !is.na(CAS_RN),
-      grp     = rev(cumsum(rev(has_cas)))
-    )
-  
-  df |>
-    group_by(grp) |>
-    summarise(
-      Chemical       = smart_paste(Chemical),
-      CAS_RN         = first(na.omit(CAS_RN)),
-      PC_Code        = first(na.omit(PC_Code)),
-      Classification = smart_paste(Classification),
-      Report_Date    = first(na.omit(Report_Date)),
-      first_row      = min(row_id),
-      .groups = "drop"
-    ) |>
-    arrange(first_row) |>
-    select(-grp, -first_row)
+  # --- Collapse remaining wrapped-line fragments into their record ---
+
+df <- df |>
+  mutate(
+    has_pc = !is.na(PC_Code),
+    grp    = rev(cumsum(rev(has_pc)))
+  )
+
+df |>
+  group_by(grp) |>
+  summarise(
+    Chemical       = smart_paste(Chemical),
+    CAS_RN         = smart_paste(CAS_RN),      # now joins "64742-89-8;" + "64742-55-8"
+    PC_Code        = first(na.omit(PC_Code)),
+    Classification = smart_paste(Classification),
+    Report_Date    = first(na.omit(Report_Date)),
+    first_row      = min(row_id),
+    .groups = "drop"
+  ) |>
+  arrange(first_row) |>
+  select(-grp, -first_row)
 }
 
-epa13 <- parse_epa_page(13)
+n_pages <- length(pdf_data("data/chemicals_evaluated.pdf"))
+
+USEPA_npic <- map_dfr(
+  13:n_pages,
+  ~ parse_epa_page(.x) |> mutate(page = .x)
+  ) |> 
+  filter(!is.na(Chemical))
+
+USEPA_npic |> 
+  arrange(Classification) |> 
+  distinct(Classification) |> 
+  filter(!str_detect(Classification, regex("^Likely To Be Carcinogenic To Humans")))
+
+USEPA_npic_carcichems <- USEPA_npic|> 
+  
+  # next might be deleted later
+  mutate(Classification = case_when(
+    Classification == "See: Imazalil Sulfate, (PC Code 111902)." &
+        str_detect(Chemical, regex("^Imazalil$", ignore_case = TRUE)) ~
+          USEPA_npic$Classification[
+            str_detect(USEPA_npic$Chemical,
+                       "Imazalil sulfate")
+          ],
+    TRUE ~ Classification
+    )
+  ) |> 
+  # previous might be deleted later
+  
+  mutate(NPIC_Carcinogenicity =
+           case_when(
+             str_detect(Classification, regex("^Carcinogenic Potential|Group B|Group C|^Likely To Be Carcinogenic To Humans|Probably Carcinogenic|Suggestive Evidence", ignore_case = TRUE)) ~ "Carcinogenic",
+             TRUE ~ NA))|>
+   filter(!is.na(NPIC_Carcinogenicity))
+
+  
+ 
+
+HBRU_npic_carcichems <- left_join(HBRU, USEPA_npic_carcichems|> select(!Chemical) |> 
+                                    mutate(CAS_RN = case_when(
+                                             CAS_RN == "106325-08-0; 133855-98-8" ~ "133855-98-8",
+                                           TRUE ~ CAS_RN))
+                                  , by = "CAS_RN") |> 
+  
+  # next might be deleted later
+  mutate(Classification = case_when(
+    is.na(Classification) &
+        str_detect(Chemical, regex("DMST", ignore_case = TRUE)) ~
+          USEPA_npic$Classification[
+            str_detect(USEPA_npic$Chemical,
+                       "Tolyfluanid")
+          ],
+    TRUE ~ Classification
+    )
+  ) |> 
+  # previous might be deleted later
+  select(1:2,7,10) |> 
+  filter(!is.na(Classification))
+
+print(paste("There are", nrow(USEPA_npic), "chemicals listed by NPIC including", nrow(USEPA_npic_carcichems), "with evidence of carcinogenicity and", nrow(HBRU_npic_carcichems), "of them are targeted in HBRU method"))
 ```
+[1] "There are 692 chemicals listed by NPIC including 200 with evidence of carcinogenicity and 35 of them are targeted in HBRU method"
+
+# If at the end I add a chunk to classify based on related chemicals (parents, isomers, metabolites) Imazalil classification might go there instead of this previous chunk
 
 
-# Probablemente cuando haga los joints con mi lista the quimicos de HBRU me convenga ponerlos a la izquierda y hacer left join, y ver si se mantienen los replicados de la lista de la derecha
 ```{r}
+USEPA_chems <- full_join (IRIS_chemicals, USEPA_npic, by = "CAS_RN")
+
+USEPA_carcichems <- full_join(IRIS_carcichems, USEPA_npic_carcichems, by = "CAS_RN") |> 
+  select(7,1:2,4,9) 
+
+
+HBRU_USEPA_carcichems <- left_join(HBRU, USEPA_carcichems |> select(!Chemical)|> 
+                                    mutate(CAS_RN = case_when(
+                                             CAS_RN == "106325-08-0; 133855-98-8" ~ "133855-98-8",
+                                           TRUE ~ CAS_RN))
+                                   , by = "CAS_RN") |>
+  mutate(
+    `WOE DESCRIPTION` = case_when(
+
+      
+      is.na(`WOE DESCRIPTION`) &
+        str_detect(Chemical, regex("chlordane", ignore_case = TRUE)) ~
+          IRIS_carcichems$`WOE DESCRIPTION`[
+            str_detect(IRIS_carcichems$`CHEMICAL NAME`,
+                       "^Chlordane")
+          ],
+      is.na(`WOE DESCRIPTION`) &
+        str_detect(Chemical, regex("PCB", ignore_case = TRUE)) ~
+          IRIS_carcichems$`WOE DESCRIPTION`[
+            str_detect(IRIS_carcichems$`CHEMICAL NAME`,
+                       "PCBs")
+          ],
+      is.na(`WOE DESCRIPTION`) &
+        str_detect(Chemical, regex("o,p'-DDD", ignore_case = TRUE)) ~
+          IRIS_carcichems$`WOE DESCRIPTION`[
+            str_detect(IRIS_carcichems$`CHEMICAL NAME`,
+                       "(DDD)")
+          ],
+      is.na(`WOE DESCRIPTION`) &
+        str_detect(Chemical, regex("o,p'-DDE", ignore_case = TRUE)) ~
+          IRIS_carcichems$`WOE DESCRIPTION`[
+            str_detect(IRIS_carcichems$`CHEMICAL NAME`,
+                       "(DDE)")
+          ],
+        is.na(`WOE DESCRIPTION`) &
+        str_detect(Chemical, regex("o,p'-DDT", ignore_case = TRUE)) ~
+          IRIS_carcichems$`WOE DESCRIPTION`[
+            str_detect(IRIS_carcichems$`CHEMICAL NAME`,
+                       "(DDT)")
+          ],
+      TRUE ~ `WOE DESCRIPTION`
+    ),
+    Classification = case_when(
+      Classification == "See: Imazalil Sulfate, (PC Code 111902)." &
+        str_detect(Chemical, regex("^Imazalil$", ignore_case = TRUE)) ~
+          USEPA_npic$Classification[
+            str_detect(USEPA_npic$Chemical,
+                       "Imazalil sulfate")
+          ],
+      is.na(Classification) &
+        str_detect(Chemical, regex("DMST", ignore_case = TRUE)) ~
+          USEPA_npic$Classification[
+            str_detect(USEPA_npic$Chemical,
+                       "Tolyfluanid")
+          ],
+    TRUE ~ Classification
+    )
+  ) |> 
+  mutate(Chemical = if_else(is.na(Chemical), `CHEMICAL NAME`, Chemical),
+         USEPA_Carcinogenicity = if_else(is.na(Classification), `WOE DESCRIPTION`, Classification)
+         ) |> 
+  select(1:2,7:9) |> 
+  filter(!is.na(USEPA_Carcinogenicity))
+
+
+print(paste("There are", nrow(USEPA_chems), "chemicals listed by USEPA after merging IRIS and NPIC databases, including", nrow(USEPA_carcichems), "chemicals with evidence of carcinogenicity and", nrow(HBRU_USEPA_carcichems), "of them are targeted in HBRU method"))
 
 ```
+[1] "There are 965 chemicals listed by USEPA after merging IRIS and NPIC databases, including 326 chemicals with evidence of carcinogenicity and 57 of them are targeted in HBRU method"
 
