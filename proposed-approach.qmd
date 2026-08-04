@@ -22,14 +22,21 @@ library(tabulapdf)
 library(httr2)
 library(tidyverse)
 library(purrr)
+library(openxlsx)
 ```
 
 # 0. Importing list of chemicals targeted in HBRU method:
 
 ```{r}
-HBRU <- read_excel("data/PubChem.xlsx") |> 
-  select(!6) |> 
-  rename(CAS_RN = "CAS N°") 
+HBRU <- read_excel("data/HBRU_targeted-chemicals.xlsx") |> 
+  select(!6:7)
+  #read_excel("data/PubChem.xlsx") |> 
+  #select(!6) |> 
+  #rename(CAS_RN = "CAS N°") 
+
+HBRU_relatedchems <- read_excel("data/HBRU_targeted-chemicals.xlsx") |> 
+  select(1:2,6:7)
+
 ```
 
 # 1. Consulting reference agencies/data bases to identify carcinogens among the targeted chemicals.
@@ -76,7 +83,7 @@ HBRU_IARC_carcichem <- left_join(HBRU, IARC_carcichem, by = "CAS_RN") |>
       ,
       
       is.na(Group) &
-        str_detect(Chemical, regex("oxy-chlordane", ignore_case = TRUE)) ~ "Metabolite of Chlordane (2B)"
+        str_detect(Chemical, regex("oxy-chlordane", ignore_case = TRUE)) ~ "Metabolite of several carcinogens: Chlordane (2B) and Heptachlor (2B)"
       ,
       
       is.na(Group) &
@@ -95,6 +102,35 @@ HBRU_IARC_carcichem <- left_join(HBRU, IARC_carcichem, by = "CAS_RN") |>
 
       is.na(Group) &
         str_detect(Chemical, regex("IMPY", ignore_case = TRUE)) ~ "Metabolite of Diazinon (2A)",
+      
+            
+      is.na(Group) &
+        str_detect(Chemical, regex("2,4-DB", ignore_case = TRUE)) ~ "Parent of 2,4-D (2B)"
+      ,
+      
+      is.na(Group) &
+        str_detect(Chemical, regex("Atrazine desethyl", ignore_case = TRUE)) ~ "Metabolite of Atrazine (2A)",      
+      
+      is.na(Group) &
+        str_detect(Chemical, regex("Endrin", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Aldrin (2A), Dieldrin (2A) and Isodrin"
+      ,
+      
+      is.na(Group) &
+        str_detect(Chemical, regex("DMP|DMTP|DMDTP", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Malathion (2A), Dimethoate and other dimethyl-OPs"
+      ,
+      
+      is.na(Group) &
+        str_detect(Chemical, regex("DEP|DETP", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Parathion (2B), Diazinon (2A) and Chlorpyrifos"
+      ,
+
+      is.na(Group) &
+        str_detect(Chemical, regex("DEDTP", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Malathion (2A), Diazinon (2A) and Chlorpyrifos"
+      ,
+      
+      is.na(Group) &
+        str_detect(Chemical, regex("PNP", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Parathion (2B), Diazinon (2A) and Chlorpyrifos"
+      ,
+  
       TRUE ~ Group
     )
   )  |> 
@@ -106,7 +142,7 @@ HBRU_IARC_carcichem <- left_join(HBRU, IARC_carcichem, by = "CAS_RN") |>
 
   
 
-print(paste("There are", nrow(IARC_agents), "agents listed by IARC including", nrow(IARC_chemicals), "chemicals among which", nrow(IARC_carcichem), "are carcinogenic (Group 1, 2A or 2B) and", nrow(HBRU_IARC_carcichem), "of them are targeted in HBRU method"))
+print(paste("There are", nrow(IARC_agents), "agents listed by IARC including", nrow(IARC_chemicals), "chemicals among which", nrow(IARC_carcichem), "are carcinogenic (Group 1, 2A or 2B) or related with a carcinogen (parent/metabolite/isomer in same commercial mixture) and", nrow(HBRU_IARC_carcichem), "of them are targeted in HBRU method"))
 
 # Comment on Hexachlorocyclohexanes: δ-HCH and ε-HCH were specifically removed because IARC report on Hexachlorocyclohexanes only mentions α-HCH and β-HCH. γ-HCH has its own category 1 for its specific CAS number: 58-89-9. 
 
@@ -138,7 +174,7 @@ HBRU_ECHA_carcichem <- left_join(HBRU, ECHA_H350andH351, by = "CAS_RN") |>
       ,
       
       is.na(ECHA_Carcinogenicity) &
-        str_detect(Chemical, regex("oxy-chlordane", ignore_case = TRUE)) ~ "Metabolite of Chlordane (Carc. 2, H351)"
+        str_detect(Chemical, regex("oxy-chlordane", ignore_case = TRUE)) ~ "Metabolite of several carcinogens: Chlordane (Carc. 2, H351) and Heptachlor (Carc. 2, H351)"
       ,
   
       is.na(ECHA_Carcinogenicity) &
@@ -148,6 +184,19 @@ HBRU_ECHA_carcichem <- left_join(HBRU, ECHA_H350andH351, by = "CAS_RN") |>
                        regex("metolachlor", ignore_case = TRUE)
                        )
           ],
+      
+      is.na(ECHA_Carcinogenicity) &
+        str_detect(Chemical, regex("dichlorophenyl", ignore_case = TRUE)) ~ "Metabolite of Diuron (Carc. 1B, H350)"
+      ,
+      
+      is.na(ECHA_Carcinogenicity) &
+        str_detect(Chemical, regex("dichloroaniline", ignore_case = TRUE)) ~ "Metabolite of several carcinogens: Diuron (Carc. 1B, H350) and Linuron (Carc. 2, H351)"
+      ,
+      
+      is.na(ECHA_Carcinogenicity) &
+        str_detect(Chemical, regex("Endrin", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Aldrin (Carc. 2, H351), Dieldrin (Carc. 2, H351) and Isodrin"
+      ,
+              
       TRUE ~ ECHA_Carcinogenicity
     )
    ) |> 
@@ -190,9 +239,21 @@ HBRU_HCIS_carcichem <- left_join(HBRU, HCIS_H350andh351, by = "CAS_RN")|>
       ,
       
       is.na(HCIS_Carcinogenicity) &
-        str_detect(Chemical, regex("oxy-chlordane", ignore_case = TRUE)) ~ "Metabolite of Chlordane (Carcinogenicity 2 H351)"
+        str_detect(Chemical, regex("oxy-chlordane", ignore_case = TRUE)) ~ "Metabolite of several carcinogens: Chlordane (Carcinogenicity 2 H351) and Heptachlor (Carcinogenicity 2 H351)"
       ,      
-
+      
+      is.na(HCIS_Carcinogenicity) &
+        str_detect(Chemical, regex("dichlorophenyl", ignore_case = TRUE)) ~ "Metabolite of Diuron (Carcinogenicity 2 H351)"
+      ,
+      
+      is.na(HCIS_Carcinogenicity) &
+        str_detect(Chemical, regex("dichloroaniline", ignore_case = TRUE)) ~ "Metabolite of several carcinogens: Diuron (Carcinogenicity 2 H351) and Linuron (Carcinogenicity 2 H351)"
+      ,
+      
+      is.na(HCIS_Carcinogenicity) &
+        str_detect(Chemical, regex("Endrin", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Aldrin (Carcinogenicity 2 H351), Dieldrin (Carcinogenicity 2 H351) and Isodrin"
+      ,
+            
       TRUE ~ HCIS_Carcinogenicity
     )
    ) |> 
@@ -216,10 +277,36 @@ PubChem <- read_excel("data/PubChem.xlsx")
 
 PubChem_carcichems <- PubChem  |> 
   rename(CAS_RN = "CAS N°") |> 
-  filter(`GHS08: Health hazard (Pubchem)` |> 
-           str_detect("H350|351")) |> 
   rename(PubChem_Carcinogenicity = "GHS08: Health hazard (Pubchem)") |> 
-  select(1:2,6)
+  select(1:2,6)|>
+   mutate(
+    PubChem_Carcinogenicity = case_when(
+
+      
+      PubChem_Carcinogenicity == "NO" &
+        str_detect(Chemical, regex("cis-chlordane", ignore_case = TRUE)) ~ "Isomer in racemic mixture of Chlordane with Trans-chlordane (H351)"
+      ,
+      
+      PubChem_Carcinogenicity == "NO" &
+        str_detect(Chemical, regex("oxy-chlordane", ignore_case = TRUE)) ~ "Metabolite of several carcinogens: Trans-chlordane (H351) and Heptachlor(H351)"
+      ,      
+
+      PubChem_Carcinogenicity == "NO" &
+        str_detect(Chemical, regex("dichlorophenyl", ignore_case = TRUE)) ~ "Metabolite of Diuron (H351)"
+      ,      
+      
+      PubChem_Carcinogenicity == "NO" &
+        str_detect(Chemical, regex("dichloroaniline", ignore_case = TRUE)) ~ "Metabolite of several carcinogens: Diuron (H351) and Linuron (H351)"
+      ,
+        
+      PubChem_Carcinogenicity == "NO" &
+        str_detect(Chemical, regex("Endrin", ignore_case = TRUE)) ~ "Metabolite of several carcinogens: Aldrin (H351), Dieldrin (H351) and Isodrin"
+      ,     
+      TRUE ~ PubChem_Carcinogenicity
+    )
+   )  |> 
+  filter(PubChem_Carcinogenicity |> 
+           str_detect("H350|351"))
   
 
 print(paste("Among the", nrow(PubChem), "chemicals targeted in HBRU method there are", nrow(PubChem_carcichems), "chemicals with evidence of carcinogenicity (Hazard statements H350 or H351) mentioned in PubChem"))
@@ -324,14 +411,14 @@ print(paste("There are", nrow(IRIS_chemicals), "chemicals listed by IRIS includi
 
 #### 1.1.6.2. NPIC
 
-```{r}
+#```{r}
 download.file(
   "https://npic.orst.edu/chemicals_evaluated.pdf",
   destfile = "data/chemicals_evaluated.pdf",
   mode = "wb"
 )
 
-```
+#```
 
 ```{r}
 assign_lines <- function(y, tol = 3) {
@@ -427,6 +514,9 @@ df |>
 
 n_pages <- length(pdf_data("data/chemicals_evaluated.pdf"))
 
+```
+
+```{r}
 USEPA_npic <- map_dfr(
   13:n_pages,
   ~ parse_epa_page(.x) |> mutate(page = .x)
@@ -443,11 +533,13 @@ USEPA_npic_carcichems <- USEPA_npic|>
   # next might be deleted later
   mutate(Classification = case_when(
     Classification == "See: Imazalil Sulfate, (PC Code 111902)." &
-        str_detect(Chemical, regex("^Imazalil$", ignore_case = TRUE)) ~
-          USEPA_npic$Classification[
-            str_detect(USEPA_npic$Chemical,
-                       "Imazalil sulfate")
-          ],
+        str_detect(Chemical, regex("^Imazalil$", ignore_case = TRUE)) ~ "See: Imazalil Sulfate (Likely To Be Carcinogenic To Humans.)"
+#          USEPA_npic$Classification[
+ #           str_detect(USEPA_npic$Chemical,
+  #                     "Imazalil sulfate")
+   #       ],
+    
+    ,
     TRUE ~ Classification
     )
   ) |> 
@@ -455,7 +547,7 @@ USEPA_npic_carcichems <- USEPA_npic|>
   
   mutate(NPIC_Carcinogenicity =
            case_when(
-             str_detect(Classification, regex("^Carcinogenic Potential|Group B|Group C|^Likely To Be Carcinogenic To Humans|Probably Carcinogenic|Suggestive Evidence", ignore_case = TRUE)) ~ "Carcinogenic",
+             str_detect(Classification, regex("^Carcinogenic Potential|Group B|Group C|^Likely To Be Carcinogenic To Humans|Probably Carcinogenic|Suggestive Evidence|Parent of Imazalil sulfate", ignore_case = TRUE)) ~ "Carcinogenic",
              TRUE ~ NA))|>
    filter(!is.na(NPIC_Carcinogenicity))
 
@@ -491,10 +583,10 @@ print(paste("There are", nrow(USEPA_npic), "chemicals listed by NPIC including",
 # If at the end I add a chunk to classify based on related chemicals (parents, isomers, metabolites) Imazalil classification might go there instead of this previous chunk
 
 ```{r}
-USEPA_chems <- full_join (IRIS_chemicals, USEPA_npic, by = "CAS_RN") |> 
-  filter(
-    !(str_detect(`CHEMICAL NAME`, "Chlordane") &
-           str_detect(`WOE DESCRIPTION`, "B2")))
+USEPA_chems <- full_join (IRIS_chemicals, USEPA_npic, by = "CAS_RN") #|> 
+#  filter(
+ #   !(str_detect(`CHEMICAL NAME`, "Chlordane") &
+  #         str_detect(`WOE DESCRIPTION`, "B2")))
 
 USEPA_carcichems <- full_join(IRIS_carcichems, USEPA_npic_carcichems, by = "CAS_RN") |> 
   select(7,1:2,4,9) 
@@ -514,7 +606,7 @@ HBRU_USEPA_carcichems <- left_join(HBRU, USEPA_carcichems |> select(!Chemical)|>
       ,
       
       is.na(`WOE DESCRIPTION`) &
-        str_detect(Chemical, regex("oxy-chlordane", ignore_case = TRUE)) ~ "Metabolite of Chlordane (Known/likely human carcinogen)"
+        str_detect(Chemical, regex("oxy-chlordane", ignore_case = TRUE)) ~ "Metabolite of several carcinogens: Chlordane (Known/likely human carcinogen) and Heptachlor (B2 (Probable human carcinogen - based on sufficient evidence of carcinogenicity in animals))"
       ,
       
       
@@ -542,8 +634,15 @@ HBRU_USEPA_carcichems <- left_join(HBRU, USEPA_carcichems |> select(!Chemical)|>
             str_detect(IRIS_carcichems$`CHEMICAL NAME`,
                        "(DDT)")
           ],
+      
+      is.na(`WOE DESCRIPTION`) &
+        str_detect(Chemical, regex("Endrin", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Aldrin (B2 (Probable human carcinogen - based on sufficient evidence of carcinogenicity in animals)), Dieldrin (B2 (Probable human carcinogen - based on sufficient evidence of carcinogenicity in animals)) and Isodrin"
+      ,
+           
+
       TRUE ~ `WOE DESCRIPTION`
     ),
+    
     Classification = case_when(
       Classification == "See: Imazalil Sulfate, (PC Code 111902)." &
         str_detect(Chemical, regex("^Imazalil$", ignore_case = TRUE)) ~
@@ -552,11 +651,40 @@ HBRU_USEPA_carcichems <- left_join(HBRU, USEPA_carcichems |> select(!Chemical)|>
                        "Imazalil sulfate")
           ],
       is.na(Classification) &
-        str_detect(Chemical, regex("DMST", ignore_case = TRUE)) ~
-          USEPA_npic$Classification[
-            str_detect(USEPA_npic$Chemical,
-                       "Tolyfluanid")
-          ],
+        str_detect(Chemical, regex("DMST", ignore_case = TRUE)) ~ "Metabolite of Tolyfluanid (Likely To Be Carcinogenic To Humans.)",
+      
+      is.na(Classification) &
+        str_detect(Chemical, regex("dichlorophenyl", ignore_case = TRUE)) ~ "Metabolite of Diuron (Likely To Be Carcinogenic To Humans)"
+      ,
+      
+      is.na(Classification) &
+        str_detect(Chemical, regex("Fipronil sulfone", ignore_case = TRUE)) ~ "Metabolite of Fipronil (Group C--Possible Human Carcinogen.)"
+      ,            
+      
+      is.na(Classification) &
+        str_detect(Chemical, regex("3-PBA", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Permethrin (Suggestive Evidence Of Carcinogenic Potential), Cypermethrin (Group C--Possible Human Carcinogen), Deltamethrin, Cyhalothrin and Fenvalerate"
+      ,   
+       
+      is.na(Classification) &
+        str_detect(Chemical, regex("dichloroaniline", ignore_case = TRUE)) ~ "Metabolite of several carcinogens: Diuron (Likely To Be Carcinogenic To Humans) and Linuron (Group C--Possible Human Carcinogen)"
+      ,
+       
+      is.na(Classification) &
+        str_detect(Chemical, regex("DMP|DMTP|DMDTP", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Malathion (Suggestive Evidence Of Carcinogenicity, But Not Sufficient To Assess Human Carcinogenic Potential), Dimethoate (Group C--Possible Human Carcinogen) and other dimethyl-OPs"
+      ,
+      
+      is.na(Classification) &
+        str_detect(Chemical, regex("DEP|DETP", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Parathion (Group C--Possible Human Carcinogen), Diazinon and Chlorpyrifos"
+      ,
+
+      is.na(Classification) &
+        str_detect(Chemical, regex("DEDTP", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Malathion (Suggestive Evidence Of Carcinogenicity, But Not Sufficient To Assess Human Carcinogenic Potential), Diazinon (2A) and Chlorpyrifos"
+      ,
+      
+      is.na(Classification) &
+        str_detect(Chemical, regex("PNP", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Parathion (Group C--Possible Human Carcinogen), Diazinon and Chlorpyrifos"
+      ,
+            
     TRUE ~ Classification
     )
   ) |> 
@@ -571,7 +699,7 @@ print(paste("There are", nrow(USEPA_chems), "chemicals listed by USEPA after mer
 
 ```
 
-\[1\] "There are 965 chemicals listed by USEPA after merging IRIS and NPIC databases, including 326 chemicals with evidence of carcinogenicity and 57 of them are targeted in HBRU method"
+"There are 965 chemicals listed by USEPA after merging IRIS and NPIC databases, including 326 chemicals with evidence of carcinogenicity and 57 of them are targeted in HBRU method"
 
 ## 1.2. Cross-referencing carcinogenicity
 
@@ -600,7 +728,33 @@ left_join(HBRU |>
   mutate(
     Cross_referenced_Carcinogenicity = case_when(
 
-      # 1. Carcinogen in humans
+
+      # 1. Metabolite of several chemicals
+      if_any(all_of(3:8),
+             ~ str_detect(.x, regex("Metabolite of several chemicals",
+                                    ignore_case = TRUE))) ~
+        "Metabolite of several chemicals (including carcinogens)",
+      
+      # 2. Metabolite of several carcinogens
+      if_any(all_of(3:8),
+             ~ str_detect(.x, regex("Metabolite of several carcinogens",
+                                    ignore_case = TRUE))) ~
+        "Metabolite of several carcinogens",
+
+      
+      # 3. Metabolite of a carcinogen
+      if_any(all_of(3:8),
+             ~ str_detect(.x, regex("Metabolite of",
+                                    ignore_case = TRUE))) ~
+        "Metabolite of a carcinogen",
+
+      # 4. Parent of a carcinogen
+      if_any(all_of(3:8),
+             ~ str_detect(.x, regex("Parent of",
+                                    ignore_case = TRUE))) ~
+        "Parent of a carcinogen",
+      
+      # 5. Carcinogen in humans
       IARC_Carcinogenicity == "1" |
         str_detect(ECHA_Carcinogenicity, "H350") |
         str_detect(HCIS_Carcinogenicity, "H350") |
@@ -611,7 +765,7 @@ left_join(HBRU |>
           "^Carcinogenic to humans|^Carcinogen to humans|^Known|Group A"
         ) ~ "Carcinogen in humans",
 
-      # 2. Any evidence from any source
+      # 6. Any evidence from any source
       if_any(
         c(
           IARC_Carcinogenicity,
@@ -624,7 +778,7 @@ left_join(HBRU |>
         ~ !is.na(.)
       ) ~ "Carcinogen in other models",
 
-      # 3. No information
+      # 7. No information
       TRUE ~ NA_character_
     )
   ) |> 
@@ -632,6 +786,70 @@ left_join(HBRU |>
 
 
 Crossreferenced_carcinogenicity |> 
+  group_by(Cross_referenced_Carcinogenicity) |> 
+  summarize(n = n())
+
+Crossreferenced_carcinogenicity |> 
   filter(!is.na(Cross_referenced_Carcinogenicity))
 
+Crossreferenced_carcinogenicity |> 
+  filter(Cross_referenced_Carcinogenicity == "Metabolite of several carcinogens")
+
+Crossreferenced_carcinogenicity |> 
+  filter(Cross_referenced_Carcinogenicity == "Parent of a carcinogen")
+
 ```
+
+```{r}
+write.xlsx(Crossreferenced_carcinogenicity |> arrange(Chemical), "exported/Crossreferenced_carcinogenicity.xlsx", rowNames = TRUE)
+```
+
+# 2. Combining information of carcinogenic chemicals with their cancer site
+
+## 2.1. Importing list of carcinogenic chemicals with cancer site
+```{r}
+chems_cancer_site <- read_excel("data/carcicems_cancer-site.xlsx") |> 
+  rename(CAS_RN = "CAS n°",
+         Chemical_cancersite = "Chemical",
+         Cancer_site = "Cancer") |> 
+  select(1:2,10:11)
+```
+
+## 2.2. Merging the cross referenced list with the cancer site list and assignig cancer site to specific metabolites or metabolites to several carcinogens with same cancer site (oxy-chlordane)
+```{r}
+carcinogenicity_cancersite_relatedchem <- left_join(Crossreferenced_carcinogenicity,
+          chems_cancer_site |> 
+            select(1,3),
+          by = "CAS_RN") |> 
+  left_join(HBRU_relatedchems |> 
+              select(2,4),
+            by = "CAS_RN")  |>
+  filter(!duplicated(Chemical))
+
+parentchem_cancersite <- carcinogenicity_cancersite_relatedchem |> 
+  select(Chemical, Parent_Cancer_site = Cancer_site)
+
+
+carcinogenicity_cancersite_relatedchem_parentsite <- left_join(
+  carcinogenicity_cancersite_relatedchem,
+  parentchem_cancersite,
+  by = c("Related chemical" = "Chemical")
+  )  |> 
+  mutate(
+    Cancer_site = case_when(
+      Chemical == "oxy-chlordane" ~
+        "Liver tumour in mice (same for Chlordane and Heptachlor)",
+
+      Cross_referenced_Carcinogenicity == "Metabolite of a carcinogen" &
+        is.na(Cancer_site) ~
+        Parent_Cancer_site,
+
+      TRUE ~ Cancer_site
+      )
+    )|> 
+  select(!Parent_Cancer_site)
+
+  
+```
+
+
