@@ -23,6 +23,7 @@ library(httr2)
 library(tidyverse)
 library(purrr)
 library(openxlsx)
+library(gt)
 ```
 
 # 0. Importing list of chemicals targeted in HBRU method:
@@ -210,7 +211,7 @@ print(paste("There are", nrow(ECHA_chemicals), "chemicals listed by ECHA includi
 # Comment on chlordanes and metolachlor: Only one of the isomers has been identified as carcinogenic, however the commercial product comes as a racemic mixture of the 2 (trans/cis-chlordane and R/S-metolachlor), hence, detection of one of the isomers is a biomarker of exposure to the mixture, including the carcinogenic compound.
 ```
 
-\[1\] "There are 4822 chemicals listed by ECHA including 1290 carcinogenic chemicals (Hazard statements H350 or H351) and 36 of them are targeted in HBRU method"
+"There are 4822 chemicals listed by ECHA including 1290 carcinogenic chemicals (Hazard statements H350 or H351) and 36 of them are targeted in HBRU method"
 
 ### 1.1.3. AICIS. Downloaded from https://www.industrialchemicals.gov.au/help-and-guides/list-chemicals-high-hazards-categorisation.
 
@@ -336,7 +337,7 @@ print(paste("There are", nrow(DFG_agents), "carcinogenic agents listed by DFG am
 
 ```
 
-\[1\] "There are 385 carcinogenic agents listed by DFG among which 344 are chemicals among which 6 of them are targeted in HBRU method"
+"There are 385 carcinogenic agents listed by DFG among which 344 are chemicals among which 6 of them are targeted in HBRU method"
 
 ### 1.1.6. USA.
 
@@ -407,9 +408,9 @@ HBRU_IRIS_carcichems <- left_join(HBRU, IRIS_carcichems, by = "CAS_RN") |>
 print(paste("There are", nrow(IRIS_chemicals), "chemicals listed by IRIS including", nrow(IRIS_carcichems), "with evidence of carcinogenicity and", nrow(HBRU_IRIS_carcichems), "of them are targeted in HBRU method"))
 ```
 
-\[1\] "There are 307 chemicals listed by IRIS including 143 with evidence of carcinogenicity and 26 of them are targeted in HBRU method"
+"There are 307 chemicals listed by IRIS including 143 with evidence of carcinogenicity and 26 of them are targeted in HBRU method"
 
-#### 1.1.6.2. NPIC
+#### 1.1.6.2. NPIC. Downloaded from "https://npic.orst.edu/chemicals_evaluated.pdf"
 
 #```{r}
 download.file(
@@ -578,9 +579,8 @@ HBRU_npic_carcichems <- left_join(HBRU, USEPA_npic_carcichems|> select(!Chemical
 print(paste("There are", nrow(USEPA_npic), "chemicals listed by NPIC including", nrow(USEPA_npic_carcichems), "with evidence of carcinogenicity and", nrow(HBRU_npic_carcichems), "of them are targeted in HBRU method"))
 ```
 
-\[1\] "There are 692 chemicals listed by NPIC including 200 with evidence of carcinogenicity and 35 of them are targeted in HBRU method"
+"There are 692 chemicals listed by NPIC including 200 with evidence of carcinogenicity and 35 of them are targeted in HBRU method"
 
-# If at the end I add a chunk to classify based on related chemicals (parents, isomers, metabolites) Imazalil classification might go there instead of this previous chunk
 
 ```{r}
 USEPA_chems <- full_join (IRIS_chemicals, USEPA_npic, by = "CAS_RN") #|> 
@@ -787,21 +787,25 @@ left_join(HBRU |>
 
 Crossreferenced_carcinogenicity |> 
   group_by(Cross_referenced_Carcinogenicity) |> 
-  summarize(n = n())
+  summarize(n = n()) |> 
+  gt()
 
-Crossreferenced_carcinogenicity |> 
-  filter(!is.na(Cross_referenced_Carcinogenicity))
-
-Crossreferenced_carcinogenicity |> 
-  filter(Cross_referenced_Carcinogenicity == "Metabolite of several carcinogens")
-
-Crossreferenced_carcinogenicity |> 
-  filter(Cross_referenced_Carcinogenicity == "Parent of a carcinogen")
-
-```
-
-```{r}
-write.xlsx(Crossreferenced_carcinogenicity |> arrange(Chemical), "exported/Crossreferenced_carcinogenicity.xlsx", rowNames = TRUE)
+print(paste("HBRU method targets 153 chemicals including", 
+            nrow(Crossreferenced_carcinogenicity |> filter(Cross_referenced_Carcinogenicity == "Carcinogen in humans")),
+            "carcinogens in humans, ",
+            nrow(Crossreferenced_carcinogenicity |> filter(Cross_referenced_Carcinogenicity == "Carcinogen in other models")),
+                 "carcinogens in other models, ",
+            nrow(Crossreferenced_carcinogenicity |> filter(Cross_referenced_Carcinogenicity == "Parent of a carcinogen")),
+                 "parent specific of a unique carcinogen, ",
+            nrow(Crossreferenced_carcinogenicity |> filter(Cross_referenced_Carcinogenicity == "Metabolite of a carcinogen")),
+                 "metabolites specific of a unique carcinogen, ",
+            nrow(Crossreferenced_carcinogenicity |> filter(Cross_referenced_Carcinogenicity == "Metabolite of several carcinogens")),
+                 "metabolites of several carcinogens and",
+            nrow(Crossreferenced_carcinogenicity |> filter(Cross_referenced_Carcinogenicity == "Metabolite of several chemicals (including carcinogens)")),
+                 "metabolites of several chemicals (including carcinogens) with the rest",
+            nrow(Crossreferenced_carcinogenicity |> filter(is.na(Cross_referenced_Carcinogenicity))),
+                 "chemicals unclassified."
+                 ))
 ```
 
 # 2. Combining information of carcinogenic chemicals with their cancer site
@@ -829,8 +833,7 @@ carcinogenicity_cancersite_relatedchem <- left_join(Crossreferenced_carcinogenic
 parentchem_cancersite <- carcinogenicity_cancersite_relatedchem |> 
   select(Chemical, Parent_Cancer_site = Cancer_site)
 
-
-carcinogenicity_cancersite_relatedchem_parentsite <- left_join(
+Crossreferenced_carcinogenicity_cancersite_metabolites <- left_join(
   carcinogenicity_cancersite_relatedchem,
   parentchem_cancersite,
   by = c("Related chemical" = "Chemical")
@@ -839,6 +842,10 @@ carcinogenicity_cancersite_relatedchem_parentsite <- left_join(
     Cancer_site = case_when(
       Chemical == "oxy-chlordane" ~
         "Liver tumour in mice (same for Chlordane and Heptachlor)",
+
+      Cross_referenced_Carcinogenicity == "Parent of a carcinogen" &
+        is.na(Cancer_site) ~
+        Parent_Cancer_site,
 
       Cross_referenced_Carcinogenicity == "Metabolite of a carcinogen" &
         is.na(Cancer_site) ~
@@ -849,7 +856,19 @@ carcinogenicity_cancersite_relatedchem_parentsite <- left_join(
     )|> 
   select(!Parent_Cancer_site)
 
-  
+Crossreferenced_carcinogenicity_cancersite_metabolites |> 
+  gt()
+ 
 ```
 
+
+```{r}
+write.xlsx(Crossreferenced_carcinogenicity_cancersite_metabolites |> arrange(Chemical), "exported/Crossreferenced_carcinogenicity_cancersite_metabolites.xlsx", rowNames = TRUE)
+```
+
+```{r}
+Crossreferenced_carcinogenicity_cancersite_metabolites |> 
+  filter(!is.na(Cross_referenced_Carcinogenicity))
+  
+```
 
