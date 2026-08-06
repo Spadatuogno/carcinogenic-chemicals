@@ -144,8 +144,8 @@ HBRU_IARC_carcichem <- left_join(HBRU, IARC_carcichem, by = "CAS_RN") |>
 
   
 
-print(paste("There are", nrow(IARC_agents), "agents listed by IARC including", nrow(IARC_chemicals), "chemicals among which", nrow(IARC_carcichem), "are carcinogenic (Group 1, 2A or 2B) or related with a carcinogen (parent/metabolite/isomer in same commercial mixture) and", nrow(HBRU_IARC_carcichem), "of them are targeted in HBRU method"))
-
+print(paste("There are", nrow(IARC_agents), "agents listed by IARC including", nrow(IARC_chemicals), "chemicals among which", nrow(IARC_carcichem), "are carcinogenic (Group 1, 2A or 2B) or related with a carcinogen (parent/metabolite/isomer in same commercial mixture) and", nrow(HBRU_IARC_carcichem |> filter(!str_detect(IARC_Carcinogenicity, regex("Metabolite of several chemicals:")))), "of them are targeted in HBRU method"))
+str_detect(Chemical, regex("cis-chlordane|trans-chlordane", ignore_case = TRUE)
 # Comment on Hexachlorocyclohexanes: δ-HCH and ε-HCH were specifically removed because IARC report on Hexachlorocyclohexanes only mentions α-HCH and β-HCH. γ-HCH has its own category 1 for its specific CAS number: 58-89-9. 
 
 
@@ -203,7 +203,7 @@ HBRU_ECHA_carcichem <- left_join(HBRU, ECHA_H350andH351, by = "CAS_RN") |>
   arrange(Chemical)
   
 
-print(paste("There are", nrow(ECHA_chemicals), "chemicals listed by ECHA including", nrow(ECHA_H350andH351), "carcinogenic chemicals (Hazard statements H350 or H351) and", nrow(HBRU_ECHA_carcichem), "of them are targeted in HBRU method"))
+print(paste("There are", nrow(ECHA_chemicals), "chemicals listed by ECHA including", nrow(ECHA_H350andH351), "carcinogenic chemicals (Hazard statements H350 or H351) and", nrow(HBRU_ECHA_carcichem|> filter(!str_detect(ECHA_Carcinogenicity, regex("Metabolite of several chemicals:")))), "of them are targeted in HBRU method"))
 
 # Comment on chlordanes and metolachlor: Only one of the isomers has been identified as carcinogenic, however the commercial product comes as a racemic mixture of the 2 (trans/cis-chlordane and R/S-metolachlor), hence, detection of one of the isomers is a biomarker of exposure to the mixture, including the carcinogenic compound.
 ```
@@ -260,7 +260,7 @@ HBRU_HCIS_carcichem <- left_join(HBRU, HCIS_H350andh351, by = "CAS_RN")|>
   arrange(Chemical)
   
 
-print(paste("There are", nrow(HCIS_chemicals), "chemicals listed by HCIS including", nrow(HCIS_H350andh351), "carcinogenic chemicals (Hazard statements H350 or H351) and", nrow(HBRU_HCIS_carcichem), "of them are targeted in HBRU method"))
+print(paste("There are", nrow(HCIS_chemicals), "chemicals listed by HCIS including", nrow(HCIS_H350andh351), "carcinogenic chemicals (Hazard statements H350 or H351) and", nrow(HBRU_HCIS_carcichem|> filter(!str_detect(HCIS_Carcinogenicity, regex("Metabolite of several chemicals")))), "of them are targeted in HBRU method"))
 
 print(paste("HCIS lists the same chemicals as ECHA except from:", anti_join(HBRU_ECHA_carcichem, HBRU_HCIS_carcichem, by = "Chemical") |> select(Chemical)))
 ```
@@ -308,9 +308,9 @@ PubChem_carcichems <- PubChem  |>
    )  |> 
   filter(PubChem_Carcinogenicity |> 
            str_detect("H350|351"))
-  
+ 
 
-print(paste("Among the", nrow(PubChem), "chemicals targeted in HBRU method there are", nrow(PubChem_carcichems), "chemicals with evidence of carcinogenicity (Hazard statements H350 or H351) mentioned in PubChem"))
+print(paste("Among the", nrow(PubChem), "chemicals targeted in HBRU method there are", nrow(PubChem_carcichems|> filter(!str_detect(PubChem_Carcinogenicity, regex("Metabolite of several chemicals")))), "chemicals with evidence of carcinogenicity (Hazard statements H350 or H351) mentioned in PubChem"))
 ```
 
 ### 1.1.5. DFG. Taken from https://books.publisso.de/sites/default/files/documents/series/mak/lmbv/Vol2024/Iss2/Doc002/mbwl_2024_eng.pdf.
@@ -333,7 +333,8 @@ HBRU_DFG_carcichem <- left_join(HBRU, DFG_chemicals, by = "CAS_RN") |>
   rename(DFG_Carcinogenicity = "Category") |> 
   filter(!is.na(DFG_Carcinogenicity))
 
-print(paste("There are", nrow(DFG_agents), "carcinogenic agents listed by DFG among which", nrow(DFG_chemicals), "are chemicals among which", nrow(HBRU_DFG_carcichem), "of them are targeted in HBRU method"))
+print(paste("There are", nrow(DFG_agents), "carcinogenic agents listed by DFG among which", nrow(DFG_chemicals), "are chemicals among which", nrow(HBRU_DFG_carcichem|> filter(!str_detect(DFG_Carcinogenicity, regex("Metabolite of several chemicals")))), "of them are targeted in HBRU method"))
+
 
 ```
 
@@ -692,8 +693,7 @@ HBRU_USEPA_carcichems <- left_join(HBRU, USEPA_carcichems |> select(!Chemical)|>
   filter(!is.na(USEPA_Carcinogenicity))
 
 
-print(paste("There are", nrow(USEPA_chems), "chemicals listed by USEPA after merging IRIS and NPIC databases, including", nrow(USEPA_carcichems), "chemicals with evidence of carcinogenicity and", nrow(HBRU_USEPA_carcichems), "of them are targeted in HBRU method"))
-
+print(paste("There are", nrow(USEPA_chems), "chemicals listed by USEPA after merging IRIS and NPIC databases, including", nrow(USEPA_carcichems), "chemicals with evidence of carcinogenicity and", nrow(HBRU_USEPA_carcichems|> filter(!str_detect(USEPA_Carcinogenicity, regex("Metabolite of several chemicals")))), "of them are targeted in HBRU method"))
 ```
 
 "There are 965 chemicals listed by USEPA after merging IRIS and NPIC databases, including 326 chemicals with evidence of carcinogenicity and 57 of them are targeted in HBRU method"
@@ -972,7 +972,7 @@ cross_referenced_truefalse |>
 
 ```
 
-### 2.3.2. Coding the upset plot
+### 2.3.2. Preparing data for upset plot
 
 ```{r}
 agencies <- c("IARC", "ECHA", "USEPA", "DFG", "HCIS", "PubChem")
@@ -988,9 +988,9 @@ upset_data <- cross_referenced_harmonized |>
               "Carcinogen in other models",
               "Isomer in a carcinogenic mixture",
               "Specific parent of a unique carcinogen",
-              "Specific metabolite of a unique carcinogen") ~ TRUE,
+              "Specific metabolite of a unique carcinogen",
+              "Metabolite of several carcinogens") ~ TRUE,
     .x %in% c("Metabolite of several chemicals",
-              "Metabolite of several carcinogens",
               NA) ~ FALSE,
     TRUE ~ NA
   )))
@@ -1026,6 +1026,7 @@ set_size_data <- set_size_data |>
   mutate(agency_num = as.numeric(factor(agency, levels = agencies_sorted)))
 ```
 
+### 2.3.4 Coding the upset plot
 ```{r}
 upset(
     upset_data |> filter(if_any(all_of(agencies), ~ .x %in% TRUE)),
@@ -1082,7 +1083,7 @@ upset(
 
 
 
-# 2.4. Harmonizing cancer site terms
+## 2.4. Harmonizing cancer site terms
 ```{r}
 cancersite_carcichem_biomarkers_75 <- carcichem_biomarkers_76 |> 
   filter(!is.na(Cancer_site)) |> 
@@ -1144,20 +1145,3 @@ cancersite_carcichem_biomarkers_75|>
 
 
 
-
-
-
-
-# TO BE DELETED
-```{r}
-Crossreferenced_carcinogenicity_cancersite_metabolites |> distinct(IARC_Carcinogenicity)
-Crossreferenced_carcinogenicity_cancersite_metabolites |> distinct(ECHA_Carcinogenicity)
-Crossreferenced_carcinogenicity_cancersite_metabolites |> distinct(USEPA_Carcinogenicity)
-Crossreferenced_carcinogenicity_cancersite_metabolites |> distinct(DFG_Carcinogenicity)
-Crossreferenced_carcinogenicity_cancersite_metabolites |> distinct(HCIS_Carcinogenicity)
-Crossreferenced_carcinogenicity_cancersite_metabolites |> distinct(PubChem_Carcinogenicity)
-```
-
-# To do:
- 1. Number of cancer sites covered by the chemicals targeted in the method
-# 2. Upset plot
