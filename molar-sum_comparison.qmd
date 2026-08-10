@@ -1,0 +1,200 @@
+---
+title: "Molar sum: comparison of three approaches"
+author: "Franco Catuogno"
+format: html
+editor: visual
+---
+
+```{r setup}
+#| include: false
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+# Required packages
+
+
+```{r}
+library(readxl)
+library(dplyr)
+library(tibble)
+library(stringr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+```
+
+
+# 0. Importing cross-referenced carcinogenicity classification and results from Luxembourg children
+```{r}
+Crossreferenced_carcinogenicity_cancersite_metabolites <- read_excel("exported/Crossreferenced_carcinogenicity_cancersite_metabolites.xlsx")
+
+chems_molecular_weight <- read_excel("data/Chemicals_MW.xlsx") |> 
+  rename(Chemical = "Name") |> 
+  select(Chemical, `Molecular mass`) |> 
+  rename(MW = "Molecular mass")
+
+pollutants_concentrations <- read_excel("data/LuxChild256.xlsx", 
+    sheet = "adapted_format") |> 
+  select(!3) |> 
+  mutate(across(where(is.character) & !c(1:2), ~ as.numeric(na_if(.x, "nd"))))
+
+
+cancersite_carcichem_biomarkers_75 <- read_excel("exported/cancersite_carcichem_biomarkers_75.xlsx")
+```
+
+
+# 1. Creating vectors of chemicals for each cancer site to be used in the molar sum
+```{r}
+overall_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |>
+  pull(Chemical)
+
+breast_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Breast == "YES") |> 
+  pull(Chemical)
+
+prostate_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Prostate == "YES") |> 
+  pull(Chemical)
+
+lung_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Lung == "YES") |> 
+  pull(Chemical)
+
+melanoma_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Melanoma == "YES") |> 
+  pull(Chemical)
+
+bladder_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Bladder == "YES") |> 
+  pull(Chemical)
+
+nhl_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(NHL == "YES") |> 
+  pull(Chemical)
+
+kidney_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Kidney == "YES") |> 
+  pull(Chemical)
+
+liver_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Liver == "YES") |> 
+  pull(Chemical)
+
+thyroid_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Thyroid == "YES") |> 
+  pull(Chemical)
+
+stomach_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Stomach == "YES") |> 
+  pull(Chemical)
+
+ovary_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Ovary == "YES") |> 
+  pull(Chemical)
+
+testis_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Testis == "YES") |> 
+  pull(Chemical)
+
+multiplemyeloma_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(`Multiple-myeloma` == "YES") |> 
+  pull(Chemical)
+
+uterus_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Uterus == "YES") |> 
+  pull(Chemical)
+
+nasopharynx_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Nasopharynx == "YES") |> 
+  pull(Chemical)
+
+soft_tissue_sarcoma_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Soft_tissue_sarcoma == "YES") |> 
+  pull(Chemical)
+
+adrenal_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Adrenal == "YES") |> 
+  pull(Chemical)
+
+adrenal_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Adrenal == "YES") |> 
+  pull(Chemical)
+
+thimus_carcichem_biomarkers <- cancersite_carcichem_biomarkers_75 |> 
+  filter(Thimus == "YES") |> 
+  pull(Chemical)
+
+```
+
+
+
+# 2. Computing molar concentrations
+## 2.1. Merging concentrations with molecular weight and computing molarity and detection frequencies
+```{r}
+pollutants_molar_conc <- inner_join(chems_molecular_weight, pollutants_concentrations, by = "Chemical")|> 
+  mutate(across(4:259)*1000/MW) |> 
+  mutate(detection_frequency = rowMeans(!is.na(across(4:259))) * 100) |> 
+  relocate(detection_frequency, .after = MW) |> 
+  relocate(CAS_RN, .after= Chemical)
+
+```
+
+## 2.2. Approach 1:Including only biomarkers with DF > 50% and substituting non-detected values by LOD/2
+```{r}
+pollutants_molar_conc_halflod<- pollutants_molar_conc |> 
+  filter(detection_frequency >= 50) |> 
+  mutate(lod = reduce(across(5:260, as.numeric), pmin, na.rm = TRUE)) |> 
+  relocate(lod, .after = detection_frequency) |> 
+  mutate(across(6:261, ~ifelse(is.na(.), lod/2, as.numeric(.)))) 
+
+
+
+pollutants_molar_conc_halflod_t <- pollutants_molar_conc_halflod|>
+  select(6:261) |> 
+  t() |> 
+  as.data.frame() |> 
+  set_names(pollutants_molar_conc_halflod |> 
+              pull(Chemical)) |>  
+  rownames_to_column(var = "part_id")
+
+ all26_carcichem_biomarkers_df50 <- pollutants_molar_conc_halflod_t|> 
+  select(any_of(overall_carcichem_biomarkers)) |> 
+   colnames()
+
+
+molarsum_carcichem_biomarkers_df50 <- pollutants_molar_conc_halflod_t|> 
+  rowwise() |> 
+  mutate(Σoverall_carcichem_biomarkers = sum(c_across(any_of(overall_carcichem_biomarkers)), na.rm = TRUE),
+         Σbreast_carcichem_biomarkers = sum(c_across(any_of(breast_carcichem_biomarkers)), na.rm = TRUE),
+         Σprostate_carcichem_biomarkers = sum(c_across(any_of(prostate_carcichem_biomarkers)), na.rm = TRUE),
+         Σlung_carcichem_biomarkers = sum(c_across(any_of(lung_carcichem_biomarkers)), na.rm = TRUE),
+         Σmelanoma_carcichem_biomarkers = sum(c_across(any_of(melanoma_carcichem_biomarkers)), na.rm = TRUE),
+         Σbladder_carcichem_biomarkers = sum(c_across(any_of(bladder_carcichem_biomarkers)), na.rm = TRUE),
+         Σnhl_carcichem_biomarkers = sum(c_across(any_of(nhl_carcichem_biomarkers)), na.rm = TRUE),
+         Σkidney_carcichem_biomarkers = sum(c_across(any_of(kidney_carcichem_biomarkers)), na.rm = TRUE),
+         Σliver_carcichem_biomarkers = sum(c_across(any_of(liver_carcichem_biomarkers)), na.rm = TRUE),
+         Σthyroid_carcichem_biomarkers = sum(c_across(any_of(thyroid_carcichem_biomarkers)), na.rm = TRUE),
+         Σstomach_carcichem_biomarkers = sum(c_across(any_of(stomach_carcichem_biomarkers)), na.rm = TRUE),
+         Σovary_carcichem_biomarkers = sum(c_across(any_of(ovary_carcichem_biomarkers)), na.rm = TRUE),
+         Σtestis_carcichem_biomarkers = sum(c_across(any_of(testis_carcichem_biomarkers)), na.rm = TRUE),
+         Σmultiplemyeloma_carcichem_biomarkers = sum(c_across(any_of(multiplemyeloma_carcichem_biomarkers)), na.rm = TRUE),
+         Σuterus_carcichem_biomarkers = sum(c_across(any_of(uterus_carcichem_biomarkers)), na.rm = TRUE),
+         Σnasopharynx_carcichem_biomarkers = sum(c_across(any_of(nasopharynx_carcichem_biomarkers)), na.rm = TRUE),
+         Σsoft_tissue_sarcoma_carcichem_biomarkers = sum(c_across(any_of(soft_tissue_sarcoma_carcichem_biomarkers)), na.rm = TRUE),
+         Σadrenal_carcichem_biomarkers = sum(c_across(any_of(adrenal_carcichem_biomarkers)), na.rm = TRUE),
+         Σthimus_carcichem_biomarkers = sum(c_across(any_of(thimus_carcichem_biomarkers)), na.rm = TRUE)
+         ) |> 
+  select(1,52:70)
+
+
+print(paste("There are",
+            nrow(pollutants_molar_conc_halflod),
+            "chemicals detected in at least half of the population. among which",
+            ncol(pollutants_molar_conc_halflod_t|> select(any_of(overall_carcichem_biomarkers))),
+            "are biomarkers of exposure to carcinogens"))
+```
+
+```{r}
+
+```
+
