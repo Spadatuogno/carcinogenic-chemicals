@@ -145,11 +145,12 @@ HBRU_IARC_carcichem <- left_join(HBRU, IARC_carcichem, by = "CAS_RN") |>
   
 
 print(paste("There are", nrow(IARC_agents), "agents listed by IARC including", nrow(IARC_chemicals), "chemicals among which", nrow(IARC_carcichem), "are carcinogenic (Group 1, 2A or 2B) or related with a carcinogen (parent/metabolite/isomer in same commercial mixture) and", nrow(HBRU_IARC_carcichem |> filter(!str_detect(IARC_Carcinogenicity, regex("Metabolite of several chemicals:")))), "of them are targeted in HBRU method"))
-str_detect(Chemical, regex("cis-chlordane|trans-chlordane", ignore_case = TRUE)
+
 # Comment on Hexachlorocyclohexanes: δ-HCH and ε-HCH were specifically removed because IARC report on Hexachlorocyclohexanes only mentions α-HCH and β-HCH. γ-HCH has its own category 1 for its specific CAS number: 58-89-9. 
 
 
 ```
+
 "There are 1129 agents listed by IARC including 913 chemicals among which 440 are carcinogenic (Group 1, 2A or 2B) and 22 of them are targeted in HBRU method"
 
 ### 1.1.2. ECHA. Downloaded from: https://chem.echa.europa.eu/obligation-lists/clhList.
@@ -265,8 +266,7 @@ print(paste("There are", nrow(HCIS_chemicals), "chemicals listed by HCIS includi
 print(paste("HCIS lists the same chemicals as ECHA except from:", anti_join(HBRU_ECHA_carcichem, HBRU_HCIS_carcichem, by = "Chemical") |> select(Chemical)))
 ```
 
-"There are 4901 chemicals listed by HCIS including 1820 carcinogenic chemicals (Hazard statements H350 or H351) and 34 of them are targeted in HBRU method"
-"HCIS lists the same chemicals as ECHA except from: c("Difenoconazole", "Metolachlor")"
+"There are 4901 chemicals listed by HCIS including 1820 carcinogenic chemicals (Hazard statements H350 or H351) and 34 of them are targeted in HBRU method" "HCIS lists the same chemicals as ECHA except from: c("Difenoconazole", "Metolachlor")"
 
 ### 1.1.4. PubChem. https://pubchem.ncbi.nlm.nih.gov/.
 
@@ -415,14 +415,9 @@ print(paste("There are", nrow(IRIS_chemicals), "chemicals listed by IRIS includi
 
 #### 1.1.6.2. NPIC. Downloaded from "https://npic.orst.edu/chemicals_evaluated.pdf"
 
-#```{r}
-download.file(
-  "https://npic.orst.edu/chemicals_evaluated.pdf",
-  destfile = "data/chemicals_evaluated.pdf",
-  mode = "wb"
-)
+#\`\`\`{r} download.file( "https://npic.orst.edu/chemicals_evaluated.pdf", destfile = "data/chemicals_evaluated.pdf", mode = "wb" )
 
-#```
+#\`\`\`
 
 ```{r}
 assign_lines <- function(y, tol = 3) {
@@ -579,7 +574,6 @@ print(paste("There are", nrow(USEPA_npic), "chemicals listed by NPIC including",
 ```
 
 "There are 692 chemicals listed by NPIC including 200 with evidence of carcinogenicity and 35 of them are targeted in HBRU method"
-
 
 ```{r}
 USEPA_chems <- full_join (IRIS_chemicals, USEPA_npic, by = "CAS_RN") #|> 
@@ -808,6 +802,7 @@ print(paste("HBRU method targets 153 chemicals including",
 # 2. Combining information of carcinogenic chemicals with their cancer site
 
 ## 2.1. Importing list of carcinogenic chemicals with cancer site
+
 ```{r}
 chems_cancer_site <- read_excel("data/carcicems_cancer-site.xlsx") |> 
   rename(CAS_RN = "CAS n°",
@@ -817,6 +812,7 @@ chems_cancer_site <- read_excel("data/carcicems_cancer-site.xlsx") |>
 ```
 
 ## 2.2. Merging the cross referenced list with the cancer site list and assignig cancer site to specific metabolites or metabolites to several carcinogens with same cancer site (oxy-chlordane)
+
 ```{r}
 carcinogenicity_cancersite_relatedchem <- left_join(Crossreferenced_carcinogenicity,
           chems_cancer_site |> 
@@ -868,15 +864,14 @@ carcichem_biomarkers_76 <- Crossreferenced_carcinogenicity_cancersite_metabolite
   filter(!Cross_referenced_Carcinogenicity == "Metabolite of several chemicals (including carcinogens)")
 ```
 
-
 ```{r}
 write.xlsx(Crossreferenced_carcinogenicity_cancersite_metabolites |> arrange(Chemical), "exported/Crossreferenced_carcinogenicity_cancersite_metabolites.xlsx", rowNames = TRUE)
 ```
 
-
 ## 2.3. Comparing agencies
 
 ### 2.3.1. Harmonizing classification categories
+
 ```{r}
 cross_referenced_harmonized <- Crossreferenced_carcinogenicity_cancersite_metabolites |> 
   mutate( 
@@ -1027,6 +1022,7 @@ set_size_data <- set_size_data |>
 ```
 
 ### 2.3.4 Coding the upset plot
+
 ```{r}
 upset(
     upset_data |> filter(if_any(all_of(agencies), ~ .x %in% TRUE)),
@@ -1080,10 +1076,8 @@ upset(
           axis.title = element_text(size = 14))
 ```
 
-
-
-
 ## 2.4. Harmonizing cancer site terms
+
 ```{r}
 cancersite_carcichem_biomarkers_75 <- carcichem_biomarkers_76 |> 
   filter(!is.na(Cancer_site)) |> 
@@ -1143,5 +1137,7 @@ cancersite_carcichem_biomarkers_75|>
   gt()  
 ```
 
-
+```{r}
+write.xlsx(cancersite_carcichem_biomarkers_75, "exported/cancersite_carcichem_biomarkers_75.xlsx", rowNames = TRUE)
+```
 
