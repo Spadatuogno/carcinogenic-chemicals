@@ -29,8 +29,6 @@ library(rstatix)
 
 # 0. Importing cross-referenced carcinogenicity classification and results from Luxembourg children
 ```{r}
-Crossreferenced_carcinogenicity_cancersite_metabolites <- read_excel("exported/Crossreferenced_carcinogenicity_cancersite_metabolites.xlsx")
-
 chems_molecular_weight <- read_excel("data/Chemicals_MW.xlsx") |> 
   rename(Chemical = "Name") |> 
   select(Chemical, `Molecular mass`) |> 
