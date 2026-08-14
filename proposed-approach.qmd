@@ -1079,8 +1079,8 @@ upset(
 ## 2.4. Harmonizing cancer site terms
 
 ```{r}
-cancersite_carcichem_biomarkers_75 <- carcichem_biomarkers_76 |> 
-  filter(!is.na(Cancer_site)) |> 
+cancersite_carcichem_biomarkers_76 <- carcichem_biomarkers_76 |> 
+  #filter(!is.na(Cancer_site)) |> 
   mutate(
     Breast = case_when(
       str_detect(Cancer_site, regex("Mammary gland carcinomas|Mammary gland tumours|Breast|Mammary tumors|Mammary  tumours ", ignore_case = TRUE))  ~ "YES", TRUE ~ "NO"),
@@ -1114,7 +1114,7 @@ cancersite_carcichem_biomarkers_75 <- carcichem_biomarkers_76 |>
       str_detect(Cancer_site, regex("Uterus|Uterine", ignore_case = TRUE))  ~ "YES", TRUE ~ "NO"),
     Nasopharynx = case_when(
       str_detect(Cancer_site, regex("Nasal", ignore_case = TRUE))  ~ "YES", TRUE ~ "NO"),
-    Soft_tissue_sarcoma = case_when(
+    `Soft tissue` = case_when(
       str_detect(Cancer_site, regex("sarcoma", ignore_case = TRUE)) ~ "YES", TRUE ~ "NO"),
     Adrenal = case_when(
       str_detect(Cancer_site, regex("Adrenal|Pheochromocytoma", ignore_case = TRUE))  ~ "YES", TRUE ~ "NO")
@@ -1122,12 +1122,12 @@ cancersite_carcichem_biomarkers_75 <- carcichem_biomarkers_76 |>
   select(1:2,10,12:29) 
 
 print(paste("The carcinogenic chemicals targeted in the metod cover",
-            ncol(cancersite_carcichem_biomarkers_75 |> select(4:21)),
+            ncol(cancersite_carcichem_biomarkers_76 |> select(4:21)),
             "different cancer sites"))
 
 print(paste("The next table shows the number of biomarkers of exposure to carcinogenic chemicals that is known to have an effect on each cancer site"))
 
-cancersite_carcichem_biomarkers_75|> 
+cancersite_carcichem_biomarkers_76|> 
   summarise(across(4:21, ~sum(. == "YES", na.rm = TRUE))) |> 
   t() |> 
   as.data.frame() |> 
@@ -1138,6 +1138,6 @@ cancersite_carcichem_biomarkers_75|>
 ```
 
 ```{r}
-write.xlsx(cancersite_carcichem_biomarkers_75, "exported/cancersite_carcichem_biomarkers_75.xlsx", rowNames = TRUE)
+write.xlsx(cancersite_carcichem_biomarkers_76, "exported/cancersite_carcichem_biomarkers_76.xlsx", rowNames = TRUE)
 ```
 
