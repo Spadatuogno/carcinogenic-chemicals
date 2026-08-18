@@ -1,0 +1,683 @@
+---
+title: "Characterization of the exposure to carcinogenic chemicals in Luxembourg children"
+author: "Franco Catuogno"
+format: html
+editor: visual
+---
+
+```{r setup}
+#| include: false
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+# Required packages
+```{r}
+library(readxl)
+library(dplyr)
+library(purrr)
+library(stringr)
+library(ggplot2)
+library(tibble)
+library(tidyr)
+library(forcats)
+library(gghalves)
+library(patchwork)
+```
+
+# 0. Importing datasets
+```{r}
+pollutants_concentrations <- read_excel("data/LuxChild256.xlsx", 
+    sheet = "adapted_format") |> 
+  select(!3) |> 
+  mutate(across(where(is.character) & !c(1:2), ~ as.numeric(na_if(.x, "nd"))))
+
+cancersite_carcichem_biomarkers_76 <- read_excel("exported/cancersite_carcichem_biomarkers_76.xlsx") |> 
+  select(!1)
+
+chems_molecular_weight <- read_excel("data/Chemicals_MW.xlsx", 
+    sheet = "chems_MW") |> 
+  select(Chemical, MW)
+
+cross_referenced_truefalse <- read_excel("exported/cross_referenced_truefalse.xlsx")
+
+
+Crossreferenced_carcinogenicity_cancersite_metabolites  <- read_excel("exported/Crossreferenced_carcinogenicity_cancersite_metabolites.xlsx")
+```
+
+# 1. Biomarkers of exposure to carcinogenic chemicals detected in children living in Luxembourg
+
+## 1.1. Counting the number of biomarkers by detection frequency
+```{r}
+carcichem_biomarkers_lux <- inner_join(cancersite_carcichem_biomarkers_76, 
+           pollutants_concentrations |> 
+             mutate(detection_frequency = rowMeans(!is.na(across(3:258))) * 100) |> 
+             select(!Chemical), 
+           by = "CAS_RN") |> 
+  relocate(detection_frequency, .after = CAS_RN) |> 
+  filter(!detection_frequency == 0)
+
+print(paste("There are",
+            nrow(carcichem_biomarkers_lux),
+            "biomarkers detected in at least one child,",
+            nrow(carcichem_biomarkers_lux |> filter(!detection_frequency < 50)),
+            "biomarkers detected in at least half of the population, and",
+            nrow(carcichem_biomarkers_lux |> filter(!detection_frequency < 95)),
+            "biomarkers detected in more than 95% of the population"))
+
+
+```
+
+## 1.2. Plotting detection frequencies for the list of biomarkers detected
+
+### 1.2.1. Showing agencies
+
+```{r}
+
+data_fig3 <- inner_join(pollutants_concentrations|> 
+               mutate(detection_frequency = rowMeans(!is.na(across(3:258))) * 100) |> 
+               select(Chemical, detection_frequency) |> 
+               filter(!detection_frequency == 0),
+           inner_join(Crossreferenced_carcinogenicity_cancersite_metabolites |> 
+                          select(Chemical, Cross_referenced_Carcinogenicity),
+                      cross_referenced_truefalse,
+                      by = "Chemical"),
+           by = "Chemical") |> 
+    filter(!Cross_referenced_Carcinogenicity == "Metabolite of several chemicals (including carcinogens)" & 
+               !is.na(Cross_referenced_Carcinogenicity)) |> 
+    arrange(detection_frequency) |> 
+    mutate(
+        # First create a list of agencies with positive classifications per row
+        Agency_List = pmap_chr(
+            list(IARC, ECHA, USEPA, DFG, HCIS, PubChem),
+            ~ {
+                agencies <- c("IARC", "ECHA", "USEPA", "DFG", "HCIS", "PubChem")
+                classifications <- c(...)
+                positive_agencies <- agencies[classifications %in% c("TRUE")]
+                
+                # Format the output based on number of agencies
+                if (length(positive_agencies) == 0) {
+                    return("Related to a carcinogen")
+                } else if (length(positive_agencies) == 1) {
+                    return(positive_agencies)
+                } else if (length(positive_agencies) == 2) {
+                    return(str_c(positive_agencies, collapse = " & "))
+                } else {
+                    return(str_c(
+                        str_c(positive_agencies[-length(positive_agencies)], collapse = ", "),
+                        " & ",
+                        positive_agencies[length(positive_agencies)]
+                    ))
+                }
+            }
+        ),
+        
+        # Then create the Entity column with your specific formatting
+        Entity = case_when(
+            Agency_List == "Related to a carcinogen" ~ "Related to a carcinogen",
+            str_count(Agency_List, "&") == 0 ~ Agency_List,  # Single agency
+            str_count(Agency_List, "&") == 1 ~ Agency_List,  # Two agencies
+            TRUE ~ Agency_List  # Three or more agencies
+        )
+    ) |> 
+    select(!Agency_List)
+
+
+
+data_fig3|> 
+    ggplot(aes(x = reorder(Chemical, detection_frequency), y = detection_frequency, fill = Cross_referenced_Carcinogenicity)) +  
+    geom_bar(stat = "identity") +  # Create bar plot
+    scale_fill_manual(values = c("Carcinogen in humans" = "#66c2a3",
+                                 "Carcinogen in other models" = "#fa8d60",
+                                 "Isomer in a carcinogenic mixture" = "#e78cc4",
+                                 "Parent of a carcinogen" = "#ffda2f",
+                                 "Metabolite of a carcinogen" = "#a8da53"  ,
+                                 "Metabolite of several carcinogens" ="#8ca1ca")) +
+    #   values = c("highlight" = "#B2182B", "default" = "#F0E442"),  # Set custom colors
+    #  labels = c("Carcinogen (in other models)", "Carcinogen (in humans)")  # Custom legend labels
+    #) +
+    geom_hline(yintercept = 95, linetype = "dashed", color = "darkgrey") +  # Horizontal line at y = 90
+    geom_hline(yintercept = 50, linetype = "dashed", color = "darkgrey") +  # Horizontal line at y = 50 
+    # annotate("text", x = 1, y = 98, label = "DF = 90%", color = "black", size = 3, hjust = -0.1) +  # Label for the line
+    labs(x = element_blank(),
+         y = "Detection Frequencies %",
+         fill = "Category") +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5)) +  # Center the title
+    theme(axis.text.x = element_text(size = 12, angle = 0, hjust = 0.5, vjust = 0.5),  # Make x-axis labels smaller and rotate
+          axis.text.y = element_text(size = 14, vjust = 0.2),
+          axis.title.x = element_text(size = 14),
+          axis.title.y = element_text(size = 14),
+          legend.text = element_text(size = 12),
+          legend.position = c(0.8, 0.2),
+          legend.box.background = element_rect(color="white", size=2)
+    ) +
+    geom_text(aes(label = Entity), 
+              position = position_nudge(y = 0.3),  # Place labels at the top of the plot
+              hjust = 0,
+              angle = 0, 
+              size = 4.0, 
+              color = "black") +  # Smaller font size and rotate vertically
+    scale_y_continuous(
+        breaks = seq(0, 100, by = 10),  # Y-axis ticks at intervals of 5
+        limits = c(0, 140)  # Set a custom y-axis maximum value (adjust if needed)
+    ) + coord_flip()
+
+
+```
+
+### 1.2.2. Showing cancer sites
+
+```{r}
+
+data_fig3b <- inner_join(pollutants_concentrations|> 
+               mutate(detection_frequency = rowMeans(!is.na(across(3:258))) * 100) |> 
+               select(Chemical, detection_frequency) |> 
+               filter(!detection_frequency == 0),
+           inner_join(Crossreferenced_carcinogenicity_cancersite_metabolites |> 
+                          select(Chemical, Cross_referenced_Carcinogenicity),
+                      cancersite_carcichem_biomarkers_76 |> 
+                        select(1,4:21),
+                      by = "Chemical"),
+           by = "Chemical") |> 
+    filter(!Cross_referenced_Carcinogenicity == "Metabolite of several chemicals (including carcinogens)" & 
+               !is.na(Cross_referenced_Carcinogenicity)) |> 
+    arrange(detection_frequency) |> 
+    mutate(
+        # First create a list of agencies with positive classifications per row
+        cancersite_List = pmap_chr(
+            list(Breast, Prostate, Lung, Melanoma, Bladder, NHL, Kidney, Liver, Thyroid, Stomach, Thimus, Ovary, Testis, `Multiple-myeloma`, Uterus, Nasopharynx, `Soft tissue`, Adrenal),
+            ~ {
+                cancersite <- c(cancersite_carcichem_biomarkers_76 |>  select(!1:3)|> colnames())
+                classifications <- c(...)
+                positive_cancersites <- cancersite[classifications %in% c("YES")]
+                
+                # Format the output based on number of agencies
+                if (length(positive_cancersites) == 0) {
+                    return("Related to carcinogens with different cancer sites")
+                } else if (length(positive_cancersites) == 1) {
+                    return(positive_cancersites)
+                } else if (length(positive_cancersites) == 2) {
+                    return(str_c(positive_cancersites, collapse = " & "))
+                } else {
+                    return(str_c(
+                        str_c(positive_cancersites[-length(positive_cancersites)], collapse = ", "),
+                        " & ",
+                        positive_cancersites[length(positive_cancersites)]
+                    ))
+                }
+            }
+        ),
+        
+        # Then create the Entity column with your specific formatting
+        Cancer_sites = case_when(
+            cancersite_List == NA ~ NA,
+            str_count(cancersite_List, "&") == 0 ~ cancersite_List,  # Single agency
+            str_count(cancersite_List, "&") == 1 ~ cancersite_List,  # Two agencies
+            TRUE ~ cancersite_List  # Three or more agencies
+        )
+    ) |> 
+    select(!cancersite_List)
+
+
+data_fig3b|> 
+    ggplot(aes(x = reorder(Chemical, detection_frequency), y = detection_frequency, fill = Cross_referenced_Carcinogenicity)) +  
+    geom_bar(stat = "identity") +  # Create bar plot
+    scale_fill_manual(values = c("Carcinogen in humans" = "#66c2a3",
+                                 "Carcinogen in other models" = "#fa8d60",
+                                 "Isomer in a carcinogenic mixture" = "#8ca1ca",
+                                 "Parent of a carcinogen" = "#ffda2f",
+                                 "Metabolite of a carcinogen" = "#a8da53"  ,
+                                 "Metabolite of several carcinogens" = "#e78cc4")) +
+    geom_hline(yintercept = 95, linetype = "dashed", color = "darkgrey") +  # Horizontal line at y = 90
+    geom_hline(yintercept = 50, linetype = "dashed", color = "darkgrey") +  # Horizontal line at y = 50 
+    # annotate("text", x = 1, y = 98, label = "DF = 90%", color = "black", size = 3, hjust = -0.1) +  # Label for the line
+    labs(x = element_blank(),
+         y = "Detection Frequencies %",
+         fill = "Category") +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5)) +  # Center the title
+    theme(axis.text.x = element_text(size = 12, angle = 0, hjust = 0.5, vjust = 0.5),  # Make x-axis labels smaller and rotate
+          axis.text.y = element_text(size = 14, vjust = 0.2),
+          axis.title.x = element_text(size = 14),
+          axis.title.y = element_text(size = 14),
+          legend.text = element_text(size = 12),
+          legend.position = c(0.8, 0.2),
+          legend.box.background = element_rect(color="white", size=2)
+    ) +
+    geom_text(aes(label = Cancer_sites), 
+              position = position_nudge(y = 0.3),  # Place labels at the top of the plot
+              hjust = 0,
+              angle = 0, 
+              size = 4.0, 
+              color = "black") +  # Smaller font size and rotate vertically
+    scale_y_continuous(
+        breaks = seq(0, 100, by = 10),  # Y-axis ticks at intervals of 5
+        limits = c(0, 140)  # Set a custom y-axis maximum value (adjust if needed)
+    ) + coord_flip()
+```
+
+
+# 2. Number of cancer sites where these chemicals can have an effect
+```{r}
+n_biomarkers_cancersite <- carcichem_biomarkers_lux |> 
+  summarize(
+    across(5:22,
+      ~ sum(.x == "YES", na.rm = TRUE)
+      )
+    ) |> 
+  t() |> 
+  as.data.frame() |> 
+  rename(n_biomarkers = "V1") |> 
+  filter(!n_biomarkers == 0)
+
+print(paste("There are",
+            nrow(n_biomarkers_cancersite),
+            "cancer sites where the biomarkers detected in the studied population can have an effect"))
+```
+
+# 3. Estimation of the burden by computing molar sum
+
+## 3.1. Creating vectors of chemicals for each cancer site to be used in the molar sum
+```{r}
+overall_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |>
+  pull(Chemical)
+
+breast_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Breast == "YES") |> 
+  pull(Chemical)
+
+prostate_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Prostate == "YES") |> 
+  pull(Chemical)
+
+lung_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Lung == "YES") |> 
+  pull(Chemical)
+
+melanoma_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Melanoma == "YES") |> 
+  pull(Chemical)
+
+bladder_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Bladder == "YES") |> 
+  pull(Chemical)
+
+nhl_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(NHL == "YES") |> 
+  pull(Chemical)
+
+kidney_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Kidney == "YES") |> 
+  pull(Chemical)
+
+liver_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Liver == "YES") |> 
+  pull(Chemical)
+
+thyroid_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Thyroid == "YES") |> 
+  pull(Chemical)
+
+stomach_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Stomach == "YES") |> 
+  pull(Chemical)
+
+ovary_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Ovary == "YES") |> 
+  pull(Chemical)
+
+testis_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Testis == "YES") |> 
+  pull(Chemical)
+
+multiplemyeloma_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(`Multiple-myeloma` == "YES") |> 
+  pull(Chemical)
+
+uterus_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Uterus == "YES") |> 
+  pull(Chemical)
+
+nasopharynx_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Nasopharynx == "YES") |> 
+  pull(Chemical)
+
+soft_tissue_sarcoma_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(`Soft tissue`== "YES") |> 
+  pull(Chemical)
+
+adrenal_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Adrenal == "YES") |> 
+  pull(Chemical)
+
+adrenal_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Adrenal == "YES") |> 
+  pull(Chemical)
+
+thimus_carcichem_biomarkers <- cancersite_carcichem_biomarkers_76 |> 
+  filter(Thimus == "YES") |> 
+  pull(Chemical)
+
+```
+
+
+## 3.2. Merging concentrations with molecular weight and computing molarity and detection frequencies
+```{r}
+pollutants_molar_conc <- inner_join(chems_molecular_weight, pollutants_concentrations, by = "Chemical")|> 
+  mutate(across(4:259)*1000/MW) |> 
+  mutate(detection_frequency = rowMeans(!is.na(across(4:259))) * 100) |> 
+  relocate(detection_frequency, .after = MW) |> 
+  relocate(CAS_RN, .after= Chemical)
+
+```
+
+## 3.3. Computing molar sum including all biomarkers detected at least once and treating non-detected values as zero (Approach 3)
+```{r}
+pollutants_molar_conc_det <- pollutants_molar_conc |>
+  filter(!detection_frequency == 0)
+
+ pollutants_molar_conc_det_t <- pollutants_molar_conc_det|> 
+  select(5:260) |> 
+  t() |> 
+  as.data.frame() |> 
+  set_names(pollutants_molar_conc_det |> 
+              pull(Chemical)) |>  
+  rownames_to_column(var = "part_id") 
+
+
+molarsum_carcichem_biomarkers_all <- pollutants_molar_conc_det_t|> 
+  rowwise() |> 
+  mutate(Σoverall_carcichem_biomarkers = sum(c_across(any_of(overall_carcichem_biomarkers)), na.rm = TRUE),
+         Σbreast_carcichem_biomarkers = sum(c_across(any_of(breast_carcichem_biomarkers)), na.rm = TRUE),
+         Σprostate_carcichem_biomarkers = sum(c_across(any_of(prostate_carcichem_biomarkers)), na.rm = TRUE),
+         Σlung_carcichem_biomarkers = sum(c_across(any_of(lung_carcichem_biomarkers)), na.rm = TRUE),
+         Σmelanoma_carcichem_biomarkers = sum(c_across(any_of(melanoma_carcichem_biomarkers)), na.rm = TRUE),
+         Σbladder_carcichem_biomarkers = sum(c_across(any_of(bladder_carcichem_biomarkers)), na.rm = TRUE),
+         Σnhl_carcichem_biomarkers = sum(c_across(any_of(nhl_carcichem_biomarkers)), na.rm = TRUE),
+         Σkidney_carcichem_biomarkers = sum(c_across(any_of(kidney_carcichem_biomarkers)), na.rm = TRUE),
+         Σliver_carcichem_biomarkers = sum(c_across(any_of(liver_carcichem_biomarkers)), na.rm = TRUE),
+         Σthyroid_carcichem_biomarkers = sum(c_across(any_of(thyroid_carcichem_biomarkers)), na.rm = TRUE),
+         Σstomach_carcichem_biomarkers = sum(c_across(any_of(stomach_carcichem_biomarkers)), na.rm = TRUE),
+         Σovary_carcichem_biomarkers = sum(c_across(any_of(ovary_carcichem_biomarkers)), na.rm = TRUE),
+         Σtestis_carcichem_biomarkers = sum(c_across(any_of(testis_carcichem_biomarkers)), na.rm = TRUE),
+         Σmultiplemyeloma_carcichem_biomarkers = sum(c_across(any_of(multiplemyeloma_carcichem_biomarkers)), na.rm = TRUE),
+         Σuterus_carcichem_biomarkers = sum(c_across(any_of(uterus_carcichem_biomarkers)), na.rm = TRUE),
+         Σnasopharynx_carcichem_biomarkers = sum(c_across(any_of(nasopharynx_carcichem_biomarkers)), na.rm = TRUE),
+         Σsoft_tissue_sarcoma_carcichem_biomarkers = sum(c_across(any_of(soft_tissue_sarcoma_carcichem_biomarkers)), na.rm = TRUE),
+         Σadrenal_carcichem_biomarkers = sum(c_across(any_of(adrenal_carcichem_biomarkers)), na.rm = TRUE),
+         Σthimus_carcichem_biomarkers = sum(c_across(any_of(thimus_carcichem_biomarkers)), na.rm = TRUE)
+         ) |>
+      select(part_id, starts_with("Σ"))
+
+
+print(paste("There are",
+            nrow(pollutants_molar_conc_det),
+            "chemicals detected in at least one participant, among which",
+            ncol(pollutants_molar_conc_det_t|> select(any_of(overall_carcichem_biomarkers))),
+            "are biomarkers of exposure to carcinogens"))
+```
+
+## 3.4. Coding the boxplot
+```{r}
+data_fig4a <- molarsum_carcichem_biomarkers_all |> 
+  select(3:20) |> 
+  t() |> 
+  as.data.frame() |> 
+  set_names(molarsum_carcichem_biomarkers_all |> 
+              pull(part_id)) |>  
+  rownames_to_column(var = "cancer_site") |>
+  rowwise() |> 
+  mutate(median_molarsum = median(c_across(2:257))) |> 
+  arrange(desc(median_molarsum))|> 
+  mutate(
+    cancer_site = str_remove(cancer_site, "^Σ"),
+    cancer_site = str_remove(cancer_site, "_carcichem_biomarkers$"))|>
+  mutate(cancer_site = str_to_sentence(cancer_site, locale = "en"),
+         cancer_site = case_when(str_detect(cancer_site, regex("Multiplemyeloma", ignore_case = TRUE)) ~ "Multiple myeloma", 
+                                 TRUE ~ cancer_site),
+         cancer_site = case_when(str_detect(cancer_site, regex("soft_", ignore_case = TRUE)) ~ "Soft tissue",
+                                 TRUE ~ cancer_site),
+         cancer_site = case_when(str_detect(cancer_site, regex("nhl", ignore_case = TRUE)) ~ "NHL",
+                                 TRUE ~ cancer_site)) |> 
+  pivot_longer(2:257,
+               names_to = "part_id",
+               values_to = "molar_sum") |> 
+  filter(!cancer_site == "Thimus")|>
+  filter(!cancer_site == "Stomach") |> 
+  mutate(cancer_site = fct_reorder(cancer_site, molar_sum, .fun = median, .desc = FALSE)) |>
+  mutate(log_molar_sum = log10(molar_sum + 1))
+  
+# Identify which cancer_site groups have zero/near-zero spread
+iqr0 <- data_fig4a |> 
+  group_by(cancer_site) |> 
+  summarise(iqr = IQR(molar_sum), sd = sd(molar_sum)) |> 
+  filter(iqr == 0 | sd == 0) |> 
+  pull(cancer_site)
+
+
+fig4a <- data_fig4a  |> 
+    
+    ggplot(aes(x = cancer_site, y = log_molar_sum, fill = cancer_site)) +
+    
+    # Half boxplot (left)
+    geom_half_boxplot(
+        side = "l",
+        width = 0.25,
+        outlier.shape = NA
+    ) + 
+    
+    # Half violin (right)
+    geom_half_violin(
+        data = data_fig4a |> filter(!cancer_site %in% iqr0),
+        side = "r",
+        alpha = 0.5,
+        color = NA,
+        scale = "width"
+    ) +
+    
+    # Jittered points (centered)
+    geom_jitter(
+        width = 0.08,
+        alpha = 0.4,
+        size = 0.5
+    ) +
+    
+    # Mean point
+    stat_summary(
+        fun = mean,
+        geom = "point",
+        shape = 23,
+        size = 2.5,
+        fill = "white"
+    ) +
+    
+    scale_y_continuous(
+        breaks = log10(c(0, 1, 10, 100, 1000, 10000) + 1),
+        labels = c(0, 1, 10, 100, 1000, 10000)
+    ) +
+    labs(y = "Molar sum of biomarkers of carcinogenic chemicals",
+         x = "Cancer site") +
+    
+    theme_minimal(base_size = 14) +
+    theme(
+        axis.text.x = element_text(hjust = 0.5),
+        axis.title.x = element_text(hjust = 0.5),
+        axis.title.y = element_text(vjust = 0.5, hjust = 0.60, size = 16),
+        legend.position = "none"
+    ) +
+    scale_fill_manual(
+        values = c(
+            "#4E79A7", "#F28E2B", "#E15759", "#76B7B2",
+            "#59A14F", "#EDC948", "#B07AA1", "#FF9DA7",
+            "#9C755F", "#BAB0AC", "#86BCB6", "#D37295",
+            "#8CD17D", "#F1CE63", "#499894", "#B6992D",
+            "#79706E", "#D4A6C8"
+        ),
+        name = NULL
+    ) +
+    coord_flip()
+
+```
+
+
+# 4. Counting the number of detected biomarkers overall and by cancer site
+## 4.1. Coding the computation
+```{r}
+
+numdet_carcichem_biomarkers_all <- pollutants_molar_conc_det_t|> 
+  rowwise() |> 
+  mutate(numdet_overall_carcichem_biomarkers = sum(
+    !is.na(c_across(any_of(overall_carcichem_biomarkers)))),
+         numdet_breast_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(breast_carcichem_biomarkers)))),
+         numdet_prostate_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(prostate_carcichem_biomarkers)))),
+         numdet_lung_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(lung_carcichem_biomarkers)))),
+         numdet_melanoma_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(melanoma_carcichem_biomarkers)))),
+         numdet_bladder_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(bladder_carcichem_biomarkers)))),
+         numdet_nhl_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(nhl_carcichem_biomarkers)))),
+         numdet_kidney_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(kidney_carcichem_biomarkers)))),
+         numdet_liver_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(liver_carcichem_biomarkers)))),
+         numdet_thyroid_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(thyroid_carcichem_biomarkers)))),
+         numdet_stomach_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(stomach_carcichem_biomarkers)))),
+         numdet_ovary_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(ovary_carcichem_biomarkers)))),
+         numdet_testis_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(testis_carcichem_biomarkers)))),
+         numdet_multiplemyeloma_carcichem_biomarkers = sum(     !is.na(c_across(any_of(multiplemyeloma_carcichem_biomarkers)))),
+         numdet_uterus_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(uterus_carcichem_biomarkers)))),
+         numdet_nasopharynx_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(nasopharynx_carcichem_biomarkers)))),
+         numdet_soft_tissue_sarcoma_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(soft_tissue_sarcoma_carcichem_biomarkers)))),
+         numdet_adrenal_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(adrenal_carcichem_biomarkers)))),
+         numdet_thimus_carcichem_biomarkers = sum(
+           !is.na(c_across(any_of(thimus_carcichem_biomarkers))))
+         ) |>
+      select(part_id, starts_with("numdet_"))
+```
+
+## 4.2. Coding the boxplot
+
+```{r}
+data_fig4b <- numdet_carcichem_biomarkers_all |>
+  select(3:20) |> 
+  t() |> 
+  as.data.frame() |> 
+  set_names(numdet_carcichem_biomarkers_all |> 
+              pull(part_id)) |>  
+  rownames_to_column(var = "cancer_site") |>
+  #rowwise() |> 
+  #mutate(median_numdet = median(c_across(2:257))) |> 
+  #arrange(desc(median_numdet)) |> 
+  pivot_longer(2:257,
+               names_to = "part_id",
+               values_to = "number_detected") |> 
+  mutate(
+    cancer_site = str_remove(cancer_site, "^numdet_"),
+    cancer_site = str_remove(cancer_site, "_carcichem_biomarkers$"))  |> 
+           mutate(cancer_site = str_to_sentence(cancer_site, locale = "en"),
+                  cancer_site = case_when(str_detect(cancer_site, regex("nhl", ignore_case = TRUE)) ~ "NHL", 
+                                       TRUE ~ cancer_site),
+                  cancer_site = case_when(str_detect(cancer_site, regex("Multiple", ignore_case = TRUE)) ~ "Multiple myeloma", 
+                                       TRUE ~ cancer_site),
+                  cancer_site = case_when(str_detect(cancer_site, regex("soft_", ignore_case = TRUE)) ~ "Soft tissue",
+                                       TRUE ~ cancer_site)) |>  
+  filter(!cancer_site == "Thimus")|>
+  filter(!cancer_site == "Stomach")|>
+  inner_join(data_fig4a,
+             by = c("cancer_site", "part_id")) |> 
+  relocate(part_id)|> 
+  mutate(cancer_site = fct_reorder(cancer_site, molar_sum, .fun = median, .desc = FALSE))# |>
+  #mutate(log_num_det = log10(number_detected + 1))
+
+
+# Identify which cancer_site groups have zero/near-zero spread
+iqr0 <- data_fig4b |> 
+  group_by(cancer_site) |> 
+  summarise(iqr = IQR(number_detected), sd = sd(number_detected)) |> 
+  filter(iqr == 0 | sd == 0) |> 
+  pull(cancer_site)
+
+
+
+
+fig4b <- data_fig4b |> 
+ ggplot(aes(x = cancer_site, y = number_detected, fill = cancer_site)) +
+
+   # Half boxplot (left)
+  geom_half_boxplot(
+    side = "l",
+    width = 0.25,
+    outlier.shape = NA
+  ) + 
+  
+  # Half violin (right)
+  geom_half_violin(
+    data = data_fig4b |> filter(!cancer_site %in% iqr0),
+    side = "r",
+    alpha = 0.5,
+    color = NA,
+    scale = "width"
+    
+  ) +
+
+  # Jittered points (centered)
+  geom_jitter(
+    width = 0.08,
+    alpha = 0.4,
+    size = 0.5
+  ) +
+
+  # Mean point
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 23,
+    size = 2.5,
+    fill = "white"
+  ) +
+
+ # scale_y_log10() +
+  labs(y = "Number of biomarkers detected",
+       x = "Cancer site") +
+
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.title.y = element_blank(),
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "none"
+  ) + 
+  scale_fill_manual(
+    values = c(
+      "#4E79A7", "#F28E2B", "#E15759", "#76B7B2",
+      "#59A14F", "#EDC948", "#B07AA1", "#FF9DA7",
+      "#9C755F", "#BAB0AC", "#86BCB6", "#D37295",
+      "#8CD17D", "#F1CE63", "#499894", "#B6992D",
+      "#79706E", "#D4A6C8"
+      ),
+    name = NULL
+    ) +
+  coord_flip()
+
+```
+
+# 5. Combining the 2 plots in 3 and 4
+```{r}
+layout <- 'AAABB'
+
+fig4a + fig4b
+```
+
+
