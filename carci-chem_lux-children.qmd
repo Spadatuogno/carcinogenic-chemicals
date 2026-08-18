@@ -22,6 +22,7 @@ library(tidyr)
 library(forcats)
 library(gghalves)
 library(patchwork)
+library(gt)
 ```
 
 # 0. Importing datasets
@@ -673,7 +674,74 @@ fig4b <- data_fig4b |>
 
 ```
 
-# 5. Combining the 2 plots in 3 and 4
+# 5. Comparing the 2 biomarkers:
+## 5.1. Computing median values for each cancer site
+```{r}
+inner_join(
+  molarsum_carcichem_biomarkers_all|>
+    select(2:20) |> 
+    t() |> 
+    as.data.frame() |> 
+    set_names(molarsum_carcichem_biomarkers_all |>
+                pull(part_id))|>
+    rownames_to_column(var = "cancer_site") |>
+    rowwise() |> 
+    mutate(
+      median_value = median(c_across(2:257), na.rm = TRUE),
+      `Molar sum` = str_glue(
+        "{signif(median(c_across(2:257), na.rm = TRUE), digit = 3)} ",
+        "({signif(min(c_across(2:257), na.rm = TRUE), digit = 3)} - ",
+        "{round(max(c_across(2:257), na.rm = TRUE), digit = 1)})"
+        ))  |> 
+    select(1,258,259)|> 
+    mutate(
+      cancer_site = str_remove(cancer_site, "^Σ"),
+      cancer_site = str_remove(cancer_site, "_carcichem_biomarkers$"))|>
+    mutate(cancer_site = str_to_sentence(cancer_site, locale = "en"),
+           cancer_site = case_when(str_detect(cancer_site, regex("Multiplemyeloma", ignore_case = TRUE)) ~ "Multiple myeloma", 
+                                   TRUE ~ cancer_site),
+           cancer_site = case_when(str_detect(cancer_site, regex("soft_", ignore_case = TRUE)) ~ "Soft tissue",
+                                   TRUE ~ cancer_site),
+           cancer_site = case_when(str_detect(cancer_site, regex("nhl", ignore_case = TRUE)) ~ "NHL",
+                                   TRUE ~ cancer_site))
+  ,
+  numdet_carcichem_biomarkers_all |>
+    select(2:20) |> 
+    t() |> 
+    as.data.frame() |>
+    set_names(numdet_carcichem_biomarkers_all |> 
+                pull(part_id)) |> 
+    rownames_to_column(var = "cancer_site") |>
+    rowwise() |> 
+    mutate(
+      max_value = max(c_across(2:257), na.rm = TRUE),
+      `Detected number` = str_glue(
+        "{median(c_across(2:257), na.rm = TRUE)} ",
+        "({min(c_across(2:257), na.rm = TRUE)} - ",
+        "{max(c_across(2:257), na.rm = TRUE)})"
+        ),
+      `Percentage of participants` = str_glue("{round(rowMeans(across(2:257) > 0) * 100, 1)}%"))|> 
+    select(1,258,259,260)|> 
+    mutate(
+      cancer_site = str_remove(cancer_site, "^numdet_"),
+      cancer_site = str_remove(cancer_site, "_carcichem_biomarkers$"))|>
+    mutate(cancer_site = str_to_sentence(cancer_site, locale = "en"),
+           cancer_site = case_when(str_detect(cancer_site, regex("Multiplemyeloma", ignore_case = TRUE)) ~ "Multiple myeloma", 
+                                   TRUE ~ cancer_site),
+           cancer_site = case_when(str_detect(cancer_site, regex("soft_", ignore_case = TRUE)) ~ "Soft tissue",
+                                   TRUE ~ cancer_site),
+           cancer_site = case_when(str_detect(cancer_site, regex("nhl", ignore_case = TRUE)) ~ "NHL",
+                                   TRUE ~ cancer_site))
+  ,
+  by = "cancer_site") |>
+  rename(`Cancer site`= "cancer_site") |> 
+  arrange(desc(median_value), desc(max_value))|>
+  select(1,3,5,6) |> 
+  gt()
+```
+
+
+## 5.2. Combining the 2 plots in 3 and 4
 ```{r}
 layout <- 'AAABB'
 
