@@ -415,9 +415,8 @@ print(paste("There are", nrow(IRIS_chemicals), "chemicals listed by IRIS includi
 
 #### 1.1.6.2. NPIC. Downloaded from "https://npic.orst.edu/chemicals_evaluated.pdf"
 
-#\`\`\`{r} download.file( "https://npic.orst.edu/chemicals_evaluated.pdf", destfile = "data/chemicals_evaluated.pdf", mode = "wb" )
+download.file( "https://npic.orst.edu/chemicals_evaluated.pdf", destfile = "data/chemicals_evaluated.pdf", mode = "wb" )
 
-#\`\`\`
 
 ```{r}
 assign_lines <- function(y, tol = 3) {
@@ -936,7 +935,8 @@ Carcinogen <- c(
   "Carcinogen in other models",
   "Isomer in a carcinogenic mixture",
   "Specific parent of a unique carcinogen",
-  "Specific metabolite of a unique carcinogen"
+  "Specific metabolite of a unique carcinogen",
+  "Metabolite of several carcinogens"
 )
 
 cross_referenced_truefalse <- cross_referenced_harmonized |>
@@ -1137,7 +1137,10 @@ cancersite_carcichem_biomarkers_76|>
   gt()  
 ```
 
+
+# 3. Exporting files for future analysis
 ```{r}
 write.xlsx(cancersite_carcichem_biomarkers_76, "exported/cancersite_carcichem_biomarkers_76.xlsx", rowNames = TRUE)
+write.xlsx(cross_referenced_truefalse, "exported/cross_referenced_truefalse.xlsx", rowNames = TRUE)
 ```
 
