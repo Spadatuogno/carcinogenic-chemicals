@@ -23,6 +23,7 @@ library(forcats)
 library(gghalves)
 library(patchwork)
 library(gt)
+library(dunn.test)
 ```
 
 # 0. Importing datasets
@@ -41,8 +42,15 @@ chems_molecular_weight <- read_excel("data/Chemicals_MW.xlsx",
 
 cross_referenced_truefalse <- read_excel("exported/cross_referenced_truefalse.xlsx")
 
-
 Crossreferenced_carcinogenicity_cancersite_metabolites  <- read_excel("exported/Crossreferenced_carcinogenicity_cancersite_metabolites.xlsx")
+
+demographics <- read_excel("data/LuxChild_Demog.xlsx") |>
+  rename(AntiParasites ="Anti-parasites",
+         part_id = "SampleID") |> 
+  mutate(AgeGroup = case_when(
+    Age < 5 ~ "Preschool children",
+    Age < 10 ~ "School-age children",
+    Age <=13 ~ "Preadolescents"))
 ```
 
 # 1. Biomarkers of exposure to carcinogenic chemicals detected in children living in Luxembourg
@@ -71,7 +79,6 @@ print(paste("There are",
 ## 1.2. Plotting detection frequencies for the list of biomarkers detected
 
 ### 1.2.1. Showing agencies
-
 ```{r}
 
 data_fig3 <- inner_join(pollutants_concentrations|> 
@@ -167,7 +174,6 @@ data_fig3|>
 ```
 
 ### 1.2.2. Showing cancer sites
-
 ```{r}
 
 data_fig3b <- inner_join(pollutants_concentrations|> 
@@ -522,6 +528,7 @@ fig4a <- data_fig4a  |>
 
 
 # 4. Counting the number of detected biomarkers overall and by cancer site
+
 ## 4.1. Coding the computation
 ```{r}
 
@@ -569,7 +576,6 @@ numdet_carcichem_biomarkers_all <- pollutants_molar_conc_det_t|>
 ```
 
 ## 4.2. Coding the boxplot
-
 ```{r}
 data_fig4b <- numdet_carcichem_biomarkers_all |>
   select(3:20) |> 
@@ -675,6 +681,7 @@ fig4b <- data_fig4b |>
 ```
 
 # 5. Comparing the 2 biomarkers:
+
 ## 5.1. Computing median values for each cancer site
 ```{r}
 inner_join(
@@ -736,7 +743,7 @@ inner_join(
   by = "cancer_site") |>
   rename(`Cancer site`= "cancer_site") |> 
   arrange(desc(median_value), desc(max_value))|>
-  select(1,3,5,6) |> 
+#  select(1,3,5,6) |> 
   gt()
 ```
 
@@ -747,5 +754,337 @@ layout <- 'AAABB'
 
 fig4a + fig4b
 ```
+# 6. Grouping by age or sex and comparing parameters
 
+## 6.1. Merging data frames
+```{r}
+data_fig5 <- inner_join(
+  demographics |>
+    select(1,4,13)
+  ,
+  inner_join(
+    molarsum_carcichem_biomarkers_all,
+    numdet_carcichem_biomarkers_all,
+    by = "part_id")
+  ,
+  by = "part_id")
+
+```
+
+## 6.2. Are there differences between the molar sum or the number of detected biomarkers of exposure to carcinogenic chemicals of children from different age groups?
+
+### 6.2.1. Kruskall-Wallis comparing overall parameters by age group
+
+#### 6.2.1.1. Molar sum of biomarkers
+```{r}
+dunn_result_molarsum_age <- dunn.test(
+  data_fig5$Σoverall_carcichem_biomarkers,
+  data_fig5$AgeGroup,
+  method = "bh",
+  list = TRUE
+)
+dunn_table_molarsum_age <- tibble(
+  Comparison = dunn_result_molarsum_age$comparisons,
+  Z = dunn_result_molarsum_age$Z,
+  `P value` = dunn_result_molarsum_age$P,
+  `Adjusted P value` = dunn_result_molarsum_age$P.adjusted
+)
+dunn_table_molarsum_age |>
+  gt() |>
+  fmt_number(
+    columns = c(Z, `P value`, `Adjusted P value`),
+    decimals = 3
+  ) |>
+  cols_label(
+    Comparison = "Molar sum comparison by Age Group",
+    Z = "Z",
+    `P value` = "P value",
+    `Adjusted P value` = "Adjusted P value"
+  ) |>
+  cols_align(
+    align = "center",
+    columns = c(Z, `P value`, `Adjusted P value`)
+  ) |>
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_column_labels()
+  ) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.background.color = "white",
+    table.border.top.width = px(2),
+    table.border.bottom.width = px(2),
+    table_body.vlines.width = px(0),
+    data_row.padding = px(5)
+  )
+```
+
+#### 6.2.1.2. Detected number of biomarkers
+```{r}
+dunn_result_numdet_age <- dunn.test(
+  data_fig5$numdet_overall_carcichem_biomarkers,
+  data_fig5$AgeGroup,
+  method = "bh",
+  list = TRUE
+)
+dunn_table_numdet_age <- tibble(
+  Comparison = dunn_result_numdet_age$comparisons,
+  Z = dunn_result_numdet_age$Z,
+  `P value` = dunn_result_numdet_age$P,
+  `Adjusted P value` = dunn_table_numdet_age$P.adjusted
+)
+
+dunn_table_numdet_age |>
+  gt() |>
+  fmt_number(
+    columns = c(Z, `P value`, `Adjusted P value`),
+    decimals = 3
+  ) |>
+  cols_label(
+    Comparison = "Detected number by Age Group",
+    Z = "Z",
+    `P value` = "P value",
+    `Adjusted P value` = "Adjusted P value"
+  ) |>
+  cols_align(
+    align = "center",
+    columns = c(Z, `P value`, `Adjusted P value`)
+  ) |>
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_column_labels()
+  ) |>
+  tab_options(
+    table.font.size = px(11),
+    column_labels.background.color = "white",
+    table.border.top.width = px(2),
+    table.border.bottom.width = px(2),
+    table_body.vlines.width = px(0),
+    data_row.padding = px(5)
+  )
+```
+
+
+## 6.3. Are there differences between the molar sum or the number of detected biomarkers of exposure to carcinogenic chemicals of children from different sex?
+
+### 6.3.1. Wilcoxon rank-sum test comparing overall parameters by sex
+```{r}
+# Molar sum
+wilcox_molarsum_sex <- wilcox.test(
+  Σoverall_carcichem_biomarkers ~ Sex,
+  data = data_fig5,
+  exact = FALSE
+)
+
+wilcox_table_molarsum_sex <- tibble(
+  Comparison = "Molar sum",
+  Statistic = unname(wilcox_molarsum_sex$statistic),
+  `P value` = wilcox_molarsum_sex$p.value
+)
+
+
+# Detected number
+wilcox_numdet_sex <- wilcox.test(
+  numdet_overall_carcichem_biomarkers ~ Sex,
+  data = data_fig5,
+  exact = FALSE
+)
+
+wilcox_table_numdet_sex <- tibble(
+  Comparison = "Detected number",
+  Statistic = unname(wilcox_numdet_sex$statistic),
+  `P value` = wilcox_numdet_sex$p.value
+)
+
+bind_rows(wilcox_table_molarsum_sex,wilcox_table_numdet_sex)|>
+  rename(Parameter = "Comparison") |> 
+  gt() 
+```
+
+## 6.4. Visualization of the comparison
+
+### 6.4.1. Coding each subfigure
+```{r}
+fig5a <- data_fig5 |>
+    ggplot(aes(x = fct_inorder(AgeGroup), y = Σoverall_carcichem_biomarkers, fill = AgeGroup)) +
+    
+    
+    geom_half_violin(side = "l", alpha = 0.5, color = NA) +
+    geom_half_boxplot(side = "r", width = 0.25, outlier.shape = NA) +
+    geom_jitter(width = 0.08, alpha = 0.4, size = 1.5) +
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 3, fill = "red") +
+    
+    scale_y_log10(
+        breaks = c(10, 30, 100, 300, 1000, 3000),
+        labels = scales::label_number(accuracy = NULL, big.mark = ",")
+    ) +
+    
+    coord_cartesian(clip = "off") +
+    
+    # Bracket: Preschool (x=1) — School-age (x=2), at y=10
+    annotate("segment", x = 1, xend = 2, y = 20, yend = 20, linewidth = 0.4) +
+    annotate("segment", x = 1, xend = 1, y = 20, yend = 25, linewidth = 0.4) +
+    annotate("segment", x = 2, xend = 2, y = 20, yend = 25, linewidth = 0.4) +
+    annotate("text", x = 1.5, y = 15, label = "q = 0.043*", size = 3.5) +
+    
+    stat_summary(
+        fun = median,
+        geom = "text",
+        aes(label = paste0("Median = ", signif(after_stat(y), 3))),
+        position = position_nudge(y = 0.5, x = 0.3),
+        size = 3.5
+    ) +
+    
+    labs(y = "Molar Sum (nmol/mg)") +
+    
+    
+    theme_minimal(base_size = 14) +
+    theme(
+        axis.text.x     = element_blank(),
+        axis.title.x    = element_blank(),
+        plot.title      = element_text(face = "bold", size = 14),
+        legend.position = "none"
+    ) + 
+    coord_cartesian(clip = "off", ylim = c(15, 3000))
+
+
+fig5b <- data_fig5 |>
+    ggplot(aes(x = fct_inorder(AgeGroup), y = numdet_overall_carcichem_biomarkers, fill = AgeGroup)) +
+    
+    geom_half_violin(side = "l", alpha = 0.5, color = NA) +
+    geom_half_boxplot(side = "r", width = 0.25, outlier.shape = NA) +
+    geom_jitter(width = 0.08, alpha = 0.4, size = 1.5) +
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 3, fill = "red") +
+    
+    # Bracket 1: Preschool (x=2) — School-age (x=3), at y=15
+    annotate("segment", x = 1, xend = 2, y = 17, yend = 17, linewidth = 0.4) +
+    annotate("segment", x = 1, xend = 1, y = 17, yend = 17.5, linewidth = 0.4) +
+    annotate("segment", x = 2, xend = 2, y = 17.5, yend = 17, linewidth = 0.4) +
+    annotate("text", x = 1.5, y = 16.5, label = "q = 0.007*", size = 3.5) +
+    
+    # Bracket 2: School-age (x=3) — Preadolescents (x=4), at y=15
+    annotate("segment", x = 2, xend = 3, y = 17, yend = 17, linewidth = 0.4) +
+    annotate("segment", x = 2, xend = 2, y = 16.5, yend = 17.5, linewidth = 0.4) +
+    annotate("segment", x = 3, xend = 3, y = 17, yend = 17.5, linewidth = 0.4) +
+    annotate("text", x = 2.5, y = 16.5, label = "q = 0.004*", size = 3.5) +
+    
+    labs(y = "Number of biomarkers detected") +
+    
+    theme_minimal(base_size = 14) +
+    theme(
+        axis.text.x     = element_text(hjust = 0.5),
+        axis.title.x    = element_blank(),
+        plot.title      = element_text(face = "bold", size = 14),
+        legend.position = "none"
+    )  + 
+    stat_summary(
+        fun = median,
+        geom = "text",
+        aes(label = paste0("Median = ", signif(after_stat(y), 3))),
+        position = position_nudge(y = 6, x = 0.1),
+        size = 3.5,
+        hjust = 0
+    ) +
+    scale_y_continuous(
+        breaks = seq(0, 50, by = 10),  # Y-axis ticks at intervals of 5
+        limits = c(15, 50)  # Set a custom y-axis maximum value (adjust if needed)
+    )
+
+fig5c <- data_fig5 |>
+    ggplot(aes(x = Sex, y = Σoverall_carcichem_biomarkers, fill = Sex)) +
+    
+    
+    geom_half_violin(side = "l", alpha = 0.5, color = NA) +
+    geom_half_boxplot(side = "r", width = 0.25, outlier.shape = NA) +
+    geom_jitter(width = 0.08, alpha = 0.4, size = 1.5) +
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 3, fill = "red") +
+    
+    scale_y_log10(
+        breaks = c(10, 30, 100, 300, 1000, 3000),
+        labels = scales::label_number(accuracy = NULL, big.mark = ",")
+    ) +
+    
+    coord_cartesian(clip = "off") +
+    
+    
+    labs(y = "Molar Sum (nmol/mg)") +
+    
+    
+    theme_minimal(base_size = 14) +
+    theme(
+        axis.text.x     = element_blank(),
+        axis.title.x    = element_blank(),
+        axis.title.y    = element_blank(),
+        axis.text.y     = element_blank(),
+        plot.title      = element_text(face = "bold", size = 14),
+        legend.position = "none"
+    ) + 
+    stat_summary(
+        fun = median,
+        geom = "text",
+        aes(label = paste0("Median = ", signif(after_stat(y), 3))),
+        position = position_nudge(y = 0.5, x = 0.1),
+        size = 3.5,
+        hjust = 0
+    ) + 
+    coord_cartesian(clip = "off", ylim = c(15, 3000)) +
+    scale_fill_brewer(palette = "Dark2", name = NULL) + 
+    scale_x_discrete(labels = c(
+        "F"  = "Girls",
+        "M" = "Boys]"
+    ))
+
+
+fig5d <- data_fig5 |>
+    ggplot(aes(x = Sex, y = numdet_overall_carcichem_biomarkers, fill = Sex)) +
+    
+    
+    geom_half_violin(side = "l", alpha = 0.5, color = NA) +
+    geom_half_boxplot(side = "r", width = 0.25, outlier.shape = NA) +
+    geom_jitter(width = 0.08, alpha = 0.4, size = 1.5) +
+    stat_summary(fun = mean, geom = "point", shape = 23, size = 3, fill = "red") +
+    
+    coord_cartesian(clip = "off") +
+    
+    
+    labs(y = "Number of biomarkers detected") +
+    
+    
+    theme_minimal(base_size = 14) +
+    theme(
+        axis.text.x     = element_text(hjust = 0.5),
+        axis.title.x    = element_blank(),
+        axis.title.y    = element_blank(),
+        axis.text.y     = element_blank(),
+        plot.title      = element_text(face = "bold", size = 14),
+        legend.position = "none"
+    ) + 
+    stat_summary(
+        fun = median,
+        geom = "text",
+        aes(label = paste0("Median = ", signif(after_stat(y), 3))),
+        position = position_nudge(y = 6, x = 0.1),
+        size = 3.5,
+        hjust = 0
+    ) + 
+    scale_fill_brewer(palette = "Dark2", name = NULL) +
+    scale_y_continuous(
+        breaks = seq(0, 50, by = 10),  # Y-axis ticks at intervals of 5
+        limits = c(15, 50)  # Set a custom y-axis maximum value (adjust if needed)
+    ) + 
+    scale_x_discrete(labels = c(
+        "F"  = "Girls",
+        "M" = "Boys"
+    ))
+
+```
+
+### 6.4.2. Combining subfigures
+```{r}
+layout <- 
+'AAABB
+CCCDD'
+
+fig5a + fig5c + fig5b + fig5d
+```
 
