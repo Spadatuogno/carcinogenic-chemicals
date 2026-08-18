@@ -1110,10 +1110,10 @@ ggplot(medians_filtered |>
     ) +
     theme_minimal() +
     expand_limits(x = max(medians_filtered$median_value) * 1.35) +
-    xlim (0,180) +
+    xlim (0,225) +
     theme(axis.text.y = element_text(size = 13),
           axis.title.x = element_text(size = 14),
-          axis.title.y = element_text(size = 14),
+          axis.title.y = element_text(size = 16, vjust = 0.6, hjust = 0.7),
           legend.text = element_text(size = 11),
           legend.position = c(0.80, 0.20),
           legend.box.background = element_rect(color="white", size=2),
