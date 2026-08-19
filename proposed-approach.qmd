@@ -301,7 +301,7 @@ PubChem_carcichems <- PubChem  |>
       ,
         
       PubChem_Carcinogenicity == "NO" &
-        str_detect(Chemical, regex("Endrin", ignore_case = TRUE)) ~ "Metabolite of several carcinogens: Aldrin (H351), Dieldrin (H351) and Isodrin"
+        str_detect(Chemical, regex("Endrin", ignore_case = TRUE)) ~ "Metabolite of several chemicals: Aldrin (H351), Dieldrin (H351) and Isodrin"
       ,     
       TRUE ~ PubChem_Carcinogenicity
     )
@@ -919,7 +919,7 @@ cross_referenced_harmonized <- Crossreferenced_carcinogenicity_cancersite_metabo
       TRUE ~ HCIS_Carcinogenicity), 
     
     PubChem_Carcinogenicity = case_when( 
-      #str_detect(PubChem_Carcinogenicity, regex("several chemicals", ignore_case =TRUE)) ~ "Metabolite of several chemicals", 
+      str_detect(PubChem_Carcinogenicity, regex("several chemicals", ignore_case =TRUE)) ~ "Metabolite of several chemicals", 
       str_detect(PubChem_Carcinogenicity, regex("several carcinogens", ignore_case =TRUE)) ~ "Metabolite of several carcinogens", 
       str_detect(PubChem_Carcinogenicity, regex("Metabolite of", ignore_case =TRUE)) ~ "Specific metabolite of a unique carcinogen", 
       #str_detect(PubChem_Carcinogenicity, regex("Parent of", ignore_case =TRUE)) ~ "Specific parent of a unique carcinogen", 
